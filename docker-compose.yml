@@ -1,0 +1,132 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-pulse-web
+    # Node reads TZ to decide two things this app depends on: how a
+    # `timestamp without time zone` value is interpreted on the way IN (a JS
+    # Date handed to such a column is serialised in process-local time), and
+    # what `new Date()` means to any code reading calendar fields. 55 columns in
+    # this schema hold WIB wall-clock, so a UTC container stored stamps 7 hours
+    # behind the ones Postgres writes with now() — silently, in the same
+    # INSERT. Reads are pinned in code (lib/db/pg-time.ts); writes need this.
+    environment:
+      TZ: Asia/Jakarta
+    env_file:
+      - .env
+    volumes:
+      # Governance writes these from the UI. They must live on the HOST so the
+      # scoring service (a separate container) reads the same file — otherwise
+      # edits stay inside this container and never reach scoring.
+      - ./lib/scoring-prompts.json:/app/lib/scoring-prompts.json
+      - ./lib/readiness-config.json:/app/lib/readiness-config.json
+      # The master encryption key. WRITABLE here because the Keamanan page
+      # generates and rotates it; mounted read-only into sync below. It must
+      # live on the HOST, not in the image: a key inside a container layer is
+      # lost on every rebuild, which would orphan every encrypted value.
+      - ./secrets:/app/secrets
+    ports:
+      - "3360:3000"
+    restart: unless-stopped
+    depends_on:
+      - vector-db
+      - topic
+    networks:
+      - ai-pulse-network
+
+  sync:
+    build:
+      context: ./sync-service
+      dockerfile: Dockerfile
+    container_name: ai-pulse-sync
+    # See the note on `web` — all three Node services share this database and
+    # must agree on what a zone-less timestamp means.
+    environment:
+      TZ: Asia/Jakarta
+    env_file:
+      - ./sync-service/.env
+    ports:
+      - "3361:8001"
+    volumes:
+      # Persist files uploaded through the Sinkronisasi page. Without this they
+      # live in the container's ephemeral layer and vanish on every restart.
+      - sync-uploads:/app/uploads
+      # Read-only: this service reads the master key to decrypt the stored MSSQL
+      # password, but never writes it. Without this mount the Monday 01:00 cron
+      # cannot decrypt and silently falls back to DB_*_PASSWORD from .env.
+      - ./secrets:/app/secrets:ro
+    restart: unless-stopped
+    depends_on:
+      - vector-db
+    networks:
+      - ai-pulse-network
+
+  scoring:
+    build:
+      context: ./scoring-service
+      dockerfile: Dockerfile
+    container_name: ai-pulse-scoring
+    # See the note on `web` — all three Node services share this database and
+    # must agree on what a zone-less timestamp means.
+    environment:
+      TZ: Asia/Jakarta
+    env_file:
+      - ./scoring-service/.env
+    volumes:
+      # Config the WEB APP owns and this service reads. The build context is
+      # ./scoring-service, so the repo root isn't in the image — without these
+      # mounts the service silently runs on hardcoded fallback prompts and
+      # readiness thresholds, and Tata Kelola edits never reach it.
+      - ./lib/scoring-prompts.json:/app/lib/scoring-prompts.json:ro
+      - ./lib/readiness-config.json:/app/lib/readiness-config.json:ro
+      - ./secrets:/app/secrets:ro
+    ports:
+      - "3362:8002"
+    restart: unless-stopped
+    depends_on:
+      - vector-db
+    networks:
+      - ai-pulse-network
+
+  topic:
+    build:
+      context: ./topic-service
+      dockerfile: Dockerfile
+    container_name: ai-pulse-topic
+    environment:
+      TZ: Asia/Jakarta
+    env_file:
+      - ./topic-service/.env
+    ports:
+      - "3372:8003"
+    restart: unless-stopped
+    depends_on:
+      - vector-db
+    networks:
+      - ai-pulse-network
+
+  vector-db:
+    image: pgvector/pgvector:pg16
+    container_name: ai-pulse-vector-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pulse_vectors
+      TZ: Asia/Jakarta
+    volumes:
+      - vector-db-data:/var/lib/postgresql/data
+    ports:
+      - "62345:5432"
+    restart: unless-stopped
+    networks:
+      - ai-pulse-network
+
+volumes:
+  vector-db-data:
+  sync-uploads:
+
+networks:
+  ai-pulse-network:
+    driver: bridge
+    name: ai-pulse-network

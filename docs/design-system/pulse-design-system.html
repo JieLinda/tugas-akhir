@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulse Design System — kondisi saat ini</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* ─────────────────────────────────────────────────────────────
+     TOKEN — disalin apa adanya dari app/globals.css (:root, mode terang).
+     Nilai oklch dipakai langsung; browser modern merendernya persis
+     seperti di app. Bagian .dark disalin di §02 sebagai tabel.
+     ───────────────────────────────────────────────────────────── */
+  :root {
+    --background: oklch(0.9607 0.0017 247.8395);
+    --foreground: oklch(0.3211 0 0);
+    --card: oklch(1.0000 0 0);
+    --card-foreground: oklch(0.3211 0 0);
+    --popover: oklch(1.0000 0 0);
+    --primary: oklch(0.6867 0.1827 45.3206);
+    --primary-foreground: oklch(1.0000 0 0);
+    --secondary: oklch(0.9670 0.0029 264.5419);
+    --secondary-foreground: oklch(0.4461 0.0263 256.8018);
+    --muted: oklch(0.9846 0.0017 247.8389);
+    --muted-foreground: oklch(0.5510 0.0234 264.3637);
+    --accent: oklch(0.9119 0.0222 243.8174);
+    --accent-foreground: oklch(0.3791 0.1378 265.5222);
+    --destructive: oklch(0.6368 0.2078 25.3313);
+    --warning: oklch(0.7690 0.1650 70.0800);
+    --border: oklch(0.9022 0.0052 247.8822);
+    --input: oklch(0.9700 0.0029 264.5420);
+    --ring: oklch(0.6397 0.1720 36.4421);
+    --sidebar: oklch(0.9700 0.0029 264.5420);
+    --sidebar-accent: oklch(0.9119 0.0222 243.8174);
+    --sidebar-accent-foreground: oklch(0.3791 0.1378 265.5222);
+    --sidebar-border: oklch(0.9276 0.0058 264.5313);
+    --radius: 0.75rem;                       /* rounded-md 12px · lg 14px · xl 18px · 2xl 16px (default Tailwind) · full */
+    --shadow-sm: 0px 1px 3px 0px hsl(0 0% 0% / 0.10), 0px 1px 2px -1px hsl(0 0% 0% / 0.10);
+    --shadow-md: 0px 1px 3px 0px hsl(0 0% 0% / 0.10), 0px 2px 4px -1px hsl(0 0% 0% / 0.10);
+    --shadow-lg: 0px 1px 3px 0px hsl(0 0% 0% / 0.10), 0px 4px 6px -1px hsl(0 0% 0% / 0.10);
+    --font-sans: Figtree, system-ui, sans-serif;  /* layout.tsx memuat Figtree; token :root menulis Inter (lihat §15) */
+    --font-mono: "JetBrains Mono", monospace;
+
+    /* palet Tailwind yang dipakai ad hoc oleh komponen (bukan token) */
+    --emerald-500: #10b981; --emerald-700: #047857; --emerald-200: #a7f3d0; --emerald-300: #6ee7b7;
+    --amber-500: #f59e0b; --amber-700: #b45309; --amber-200: #fde68a; --amber-300: #fcd34d;
+    --rose-500: #f43f5e; --rose-700: #be123c; --rose-200: #fecdd3;
+    --sky-500: #0ea5e9; --sky-700: #0369a1; --sky-200: #bae6fd; --sky-300: #7dd3fc;
+    --blue-500: #3b82f6; --blue-700: #1d4ed8;
+    --violet-500: #8b5cf6; --violet-700: #6d28d9; --violet-200: #ddd6fe;
+    --fuchsia-500: #d946ef; --fuchsia-700: #a21caf; --fuchsia-200: #f5d0fe;
+    --indigo-500: #6366f1; --indigo-600: #4f46e5;
+    --teal-500: #14b8a6; --orange-500: #f97316;
+    --slate-100: #f1f5f9; --slate-200: #e2e8f0; --slate-300: #cbd5e1; --slate-500: #64748b; --slate-600: #475569; --slate-700: #334155; --slate-950: #020617;
+  }
+
+  /* ───────────────────────── halaman panduan ───────────────────────── */
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: var(--font-sans); color: var(--foreground); background: #fff; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  a { color: var(--primary); text-decoration: none; } a:hover { text-decoration: underline; }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; }
+  code { font-family: var(--font-mono); font-size: 12px; background: var(--slate-100); padding: 1px 5px; border-radius: 4px; }
+
+  .doc { display: grid; grid-template-columns: 230px minmax(0, 1fr); min-height: 100vh; }
+  .toc { position: sticky; top: 0; height: 100vh; overflow: auto; border-right: 1px solid var(--border); padding: 28px 20px 28px 28px; }
+  .toc .t { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .toc .t i { display: inline-flex; width: 22px; height: 22px; border-radius: 6px; background: var(--primary); box-shadow: 0 12px 24px -12px rgba(234,88,12,0.8); }
+  .toc .v { font-size: 12px; color: var(--muted-foreground); margin: 4px 0 22px; }
+  .toc a { display: block; padding: 5px 0; color: var(--slate-600); font-size: 13.5px; }
+  .toc a:hover { color: var(--foreground); text-decoration: none; }
+  .toc h5 { margin: 16px 0 4px; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--slate-500); font-weight: 600; }
+
+  .content { padding: 40px 56px 96px; max-width: 1200px; }
+  h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+  .lead { margin: 12px 0 0; font-size: 16px; color: var(--slate-600); max-width: 780px; }
+  section { margin-top: 64px; }
+  section > h2 { margin: 0 0 6px; font-size: 22px; font-weight: 700; letter-spacing: -0.015em; display: flex; align-items: baseline; gap: 12px; }
+  section > h2 .n { font-family: var(--font-mono); font-size: 13px; color: var(--primary); font-weight: 500; }
+  section > p.d { margin: 0 0 24px; color: var(--slate-600); max-width: 780px; }
+  h3 { margin: 32px 0 10px; font-size: 15px; font-weight: 600; }
+  h3 + p { margin: -6px 0 12px; color: var(--slate-600); font-size: 13.5px; }
+  .src { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-foreground); }
+
+  /* specimen: latar meniru shell app (gradien + grid) supaya komponen terlihat seperti di tempatnya */
+  .spec { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .spec .body { padding: 24px; background:
+      linear-gradient(rgba(15,23,42,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,42,0.035) 1px, transparent 1px),
+      radial-gradient(circle at top left, rgba(234,88,12,0.08), transparent 34%), linear-gradient(135deg, rgba(248,250,252,0.96), rgba(241,245,249,0.72));
+    background-size: 40px 40px, 40px 40px, auto, auto; }
+  .spec .body.white { background: #fff; }
+  .spec .cap { padding: 10px 16px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--slate-600); background: #fff; display: flex; gap: 14px; flex-wrap: wrap; }
+  .spec .cap b { color: var(--foreground); font-weight: 600; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  .three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+
+  /* tabel dokumentasi */
+  table.doc { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.doc th { text-align: left; font-weight: 600; font-size: 11.5px; color: var(--slate-500); padding: 8px 10px; border-bottom: 1px solid var(--foreground); text-transform: uppercase; letter-spacing: 0.06em; }
+  table.doc td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.doc td:first-child { font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
+  .sw { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 8px; border: 1px solid rgba(0,0,0,0.08); }
+  .swatches { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+  .swatch { height: 72px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: flex-end; padding: 8px 10px; font-size: 11px; line-height: 1.3; }
+  .swatch b { display: block; font-weight: 600; }
+  .type div { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; padding: 12px 0; border-bottom: 1px solid var(--border); align-items: baseline; }
+  .type .k { font-family: var(--font-mono); font-size: 12px; color: var(--slate-500); }
+  .radii { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+  .radii div { width: 84px; height: 56px; background: #fff; border: 1px solid var(--border); box-shadow: var(--shadow-sm); display: flex; align-items: flex-end; justify-content: center; padding: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--slate-600); }
+
+  /* ═══════════════ KOMPONEN — kelas meniru komponen shadcn di components/ui ═══════════════ */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: 12px; font: inherit; font-size: 14px; font-weight: 500; border: 1px solid transparent; cursor: pointer; white-space: nowrap; transition: background .15s; }
+  .btn.sm { height: 32px; padding: 0 12px; } .btn.xs { height: 24px; padding: 0 8px; font-size: 12px; border-radius: 12px; } .btn.lg { height: 40px; padding: 0 24px; } .btn.icon { width: 36px; padding: 0; }
+  .btn.default { background: var(--primary); color: var(--primary-foreground); } .btn.default:hover { filter: brightness(0.92); }
+  .btn.destructive { background: var(--destructive); color: #fff; }
+  .btn.outline { background: var(--background); border-color: var(--border); box-shadow: 0 1px 3px 0 hsl(0 0% 0% / .05); color: var(--foreground); } .btn.outline:hover { background: var(--accent); color: var(--accent-foreground); }
+  .btn.secondary { background: var(--secondary); color: var(--secondary-foreground); }
+  .btn.ghost { background: transparent; color: var(--foreground); } .btn.ghost:hover { background: var(--accent); color: var(--accent-foreground); }
+  .btn.link { background: transparent; color: var(--primary); text-decoration: underline; text-underline-offset: 4px; }
+  .btn[disabled] { opacity: .5; pointer-events: none; }
+  .btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .btn.cta-emerald { border-color: rgba(16,185,129,.4); background: rgba(16,185,129,.15); color: var(--emerald-700); font-weight: 600; }
+  .btn.cta-emerald.on { background: var(--emerald-500); color: #fff; border-color: #34d399; }
+
+  .field { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+  .field label { font-weight: 500; font-size: 14px; }
+  .input { height: 36px; border: 1px solid var(--input); border-radius: 12px; padding: 0 12px; font: inherit; font-size: 14px; background: var(--card); color: var(--foreground); width: 100%; box-shadow: 0 1px 3px 0 hsl(0 0% 0% / .05); }
+  .input:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent); }
+  .input.err { border-color: var(--destructive); box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 20%, transparent); }
+  .field .hint { font-size: 12px; color: var(--muted-foreground); }
+  .field .msg { font-size: 12px; color: var(--destructive); }
+  .sel { position: relative; } .sel .input { padding-right: 32px; display: flex; align-items: center; }
+  .sel::after { content: ""; position: absolute; right: 14px; top: 13px; width: 6px; height: 6px; border-right: 1.5px solid var(--muted-foreground); border-bottom: 1.5px solid var(--muted-foreground); transform: rotate(45deg); }
+
+  .tabs { display: inline-flex; align-items: center; height: 36px; padding: 3px; border-radius: 14px; background: var(--muted); color: var(--muted-foreground); gap: 0; }
+  .tabs span { display: inline-flex; align-items: center; height: 100%; padding: 4px 8px; border-radius: 12px; font-size: 14px; font-weight: 500; color: color-mix(in oklab, var(--foreground) 60%, transparent); border: 1px solid transparent; }
+  .tabs span.on { background: var(--background); color: var(--foreground); box-shadow: var(--shadow-sm); }
+  .tabs.big { height: 44px; padding: 4px; background: color-mix(in oklab, var(--muted) 70%, transparent); gap: 4px; }
+  .tabs.big span { font-weight: 700; gap: 8px; }
+  .tabs.big span.on { background: var(--emerald-500); color: #fff; box-shadow: var(--shadow-md); }
+  .tabs.big span.on.rose { background: var(--rose-500); }
+  .tabs.line { background: transparent; padding: 0; gap: 4px; border-radius: 0; }
+  .tabs.line span { border-radius: 12px; position: relative; }
+  .tabs.line span.on { background: transparent; box-shadow: none; }
+  .tabs.line span.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -5px; height: 2px; background: var(--foreground); }
+  .pillstrip { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 18px; border: 1px solid color-mix(in oklab, var(--border) 60%, transparent); background: rgba(241,245,249,.8); }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 14px; font-size: 14px; font-weight: 600; }
+  .pill svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .pill .dot { width: 6px; height: 6px; border-radius: 999px; margin-left: 2px; }
+  .pill.sky { color: rgba(3,105,161,.8); } .pill.sky.on { background: rgba(14,165,233,.12); color: #075985; box-shadow: inset 0 0 0 1px rgba(14,165,233,.3); } .pill.sky .dot { background: var(--sky-500); }
+  .pill.violet { color: rgba(109,40,217,.8); } .pill.violet.on { background: rgba(139,92,246,.12); color: #5b21b6; box-shadow: inset 0 0 0 1px rgba(139,92,246,.3); } .pill.violet .dot { background: var(--violet-500); }
+  .pill.emerald { color: rgba(4,120,87,.8); } .pill.emerald .dot { background: var(--emerald-500); }
+  .pill.amber { color: rgba(180,83,9,.8); } .pill.amber .dot { background: var(--amber-500); }
+  .pill.rose { color: rgba(190,18,60,.8); } .pill.rose .dot { background: var(--rose-500); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; border: 1px solid transparent; font-size: 12px; }
+  .chip.program { padding: 4px 12px; font-size: 14px; font-weight: 500; border-color: color-mix(in oklab, var(--primary) 30%, transparent); background: color-mix(in oklab, var(--primary) 5%, transparent); color: var(--primary); }
+  .chip.filter { color: var(--muted-foreground); } .chip.filter.on { border-color: var(--border); background: var(--card); color: var(--foreground); }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow-sm); color: var(--card-foreground); }
+  .card .ch { padding: 24px 24px 0; display: grid; gap: 8px; }
+  .card .ch h4 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1; }
+  .card .ch p { margin: 0; font-size: 14px; color: var(--muted-foreground); }
+  .card .cb { padding: 24px; }
+  .cell { background: var(--card); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-sm); overflow: hidden; display: flex; flex-direction: column; transition: box-shadow .15s; }
+  .cell:hover { box-shadow: var(--shadow-md); }
+  .cellhead { display: flex; align-items: center; gap: 10px; padding: 16px 16px 0; }
+  .cellhead .ic { width: 32px; height: 32px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; }
+  .cellhead .ic svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .cellhead p { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.2; } .cellhead small { display: block; font-size: 11px; color: var(--muted-foreground); }
+  .kpi { border-radius: 18px; border: 1px solid var(--border); background: rgba(255,255,255,.6); backdrop-filter: blur(4px); padding: 12px; }
+  .kpi .l { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); }
+  .kpi .l svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .kpi .v { margin-top: 4px; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--slate-950); }
+  .kpi .n { font-size: 11px; color: var(--muted-foreground); }
+  .stat { padding: 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--card); box-shadow: var(--shadow-sm); }
+  .stat .l { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); }
+  .stat .v { margin-top: 4px; font-size: 20px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .stat .h { margin-top: 4px; font-size: 10px; color: var(--muted-foreground); }
+  .bigstat { border-radius: 16px; border: 1px solid rgba(167,243,208,.6); background: linear-gradient(to bottom right, rgba(16,185,129,.10), var(--card)); padding: 16px; display: flex; flex-direction: column; justify-content: space-between; min-height: 150px; box-shadow: var(--shadow-sm); }
+  .bigstat.sky { border-color: rgba(186,230,253,.6); background: linear-gradient(to bottom right, rgba(14,165,233,.10), var(--card)); }
+  .bigstat .ic { width: 36px; height: 36px; border-radius: 18px; display: inline-flex; align-items: center; justify-content: center; background: rgba(16,185,129,.15); color: #059669; }
+  .bigstat.sky .ic { background: rgba(14,165,233,.15); color: #0284c7; }
+  .bigstat .ic svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .bigstat .v { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--slate-950); }
+  .bigstat .t { font-size: 12px; font-weight: 500; color: var(--slate-700); } .bigstat .n { font-size: 11px; color: var(--muted-foreground); }
+  .bar { height: 8px; border-radius: 999px; background: rgba(226,232,240,.7); overflow: hidden; margin-top: 8px; } .bar i { display: block; height: 100%; border-radius: 999px; background: var(--primary); } .bar.thin { height: 6px; }
+
+  .coll { background: var(--card); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow-sm); overflow: hidden; }
+  .coll .hd { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px 16px; border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent); }
+  .coll .hd h4 { margin: 0; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .coll .hd h4 svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .coll .hd h4 .sum { font-size: 12px; font-weight: 400; color: var(--muted-foreground); }
+  .coll .hd p { margin: 6px 0 0; font-size: 14px; color: var(--muted-foreground); }
+  .coll .hd .chev { width: 16px; height: 16px; stroke: var(--muted-foreground); fill: none; stroke-width: 2; margin-top: 2px; flex-shrink: 0; }
+  .coll .bd { padding: 24px; font-size: 13.5px; color: var(--slate-600); }
+  .coll.primary .hd { background: color-mix(in oklab, var(--primary) 5%, transparent); } .coll.primary h4 svg { stroke: var(--primary); }
+  .coll.neutral .hd { background: color-mix(in oklab, var(--muted) 50%, transparent); } .coll.neutral h4 svg { stroke: var(--slate-500); }
+  .coll.caution .hd { background: rgba(245,158,11,.06); } .coll.caution h4 svg { stroke: #d97706; }
+  .coll.danger .hd { background: rgba(244,63,94,.06); } .coll.danger h4 svg { stroke: #e11d48; }
+
+  table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.data th { height: 40px; padding: 0 8px; text-align: left; font-weight: 500; color: var(--foreground); border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
+  table.data td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+  table.data tr:last-child td { border-bottom: 0; }
+  table.data tbody tr:hover td { background: color-mix(in oklab, var(--muted) 50%, transparent); }
+  table.data td .m { display: block; font-size: 11px; color: var(--muted-foreground); }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; border: 1px solid transparent; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .badge.default { background: var(--primary); color: #fff; }
+  .badge.secondary { background: var(--secondary); color: var(--secondary-foreground); }
+  .badge.destructive { background: var(--destructive); color: #fff; }
+  .badge.outline { border-color: var(--border); color: var(--foreground); }
+  .badge.emerald { border-color: var(--emerald-200); background: rgba(16,185,129,.10); color: var(--emerald-700); }
+  .badge.amber { border-color: var(--amber-200); background: rgba(245,158,11,.10); color: var(--amber-700); }
+  .badge.sky { border-color: var(--sky-200); background: rgba(14,165,233,.10); color: var(--sky-700); }
+  .badge.rose { border-color: var(--rose-200); background: rgba(244,63,94,.10); color: var(--rose-700); }
+  .badge.slate { border-color: var(--slate-200); background: rgba(100,116,139,.10); color: var(--slate-700); }
+  .badge.violet { border-color: var(--violet-200); background: rgba(139,92,246,.10); color: var(--violet-700); }
+  .badge.fuchsia { border-color: var(--fuchsia-200); background: rgba(217,70,239,.10); color: var(--fuchsia-700); }
+  .badge.blue { background: rgba(59,130,246,.10); color: var(--blue-700); }
+  .badge.tiny { font-size: 10px; font-weight: 700; padding: 2px 8px; }
+  .overline { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .22em; color: color-mix(in oklab, var(--primary) 75%, transparent); }
+  .overline.pill { padding: 4px 10px; border-radius: 999px; background: color-mix(in oklab, var(--primary) 15%, transparent); color: var(--primary); letter-spacing: .2em; }
+
+  .alert { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 2px 12px; padding: 12px 16px; border-radius: 14px; border: 1px solid var(--border); background: var(--card); font-size: 14px; }
+  .alert svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; margin-top: 2px; }
+  .alert b { font-weight: 500; } .alert p { margin: 0; grid-column: 2; color: var(--muted-foreground); font-size: 14px; }
+  .alert.destructive { color: var(--destructive); } .alert.destructive p { color: color-mix(in oklab, var(--destructive) 90%, transparent); }
+  .alert.warn { border-color: var(--amber-200); background: rgba(245,158,11,.10); color: var(--amber-700); } .alert.warn p { color: #92400e; }
+  .alert.sky { border-color: var(--sky-200); background: rgba(14,165,233,.10); color: var(--sky-700); } .alert.sky p { color: #075985; }
+  .dialog { width: 512px; max-width: 100%; background: var(--background); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 24px; display: grid; gap: 16px; position: relative; }
+  .dialog h4 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1; } .dialog p { margin: 0; font-size: 14px; color: var(--muted-foreground); }
+  .dialog .ft { display: flex; justify-content: flex-end; gap: 8px; }
+  .dialog .x { position: absolute; right: 16px; top: 16px; opacity: .7; width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .toast { width: 356px; padding: 16px; border-radius: 14px; border: 1px solid; font-size: 13px; display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 6px 12px; box-shadow: var(--shadow-lg); background: #fff; }
+  .toast svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .toast b { font-weight: 500; } .toast small { grid-column: 2; color: inherit; opacity: .8; }
+  .toast.ok { border-color: #bbf7d0; background: #f0fdf4; color: #15803d; }
+  .toast.err { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+  .empty { border: 1px dashed var(--border); border-radius: 18px; padding: 16px; text-align: center; font-size: 12px; color: var(--muted-foreground); }
+  .skel { height: 12px; border-radius: 6px; background: var(--accent); animation: pulse 2s cubic-bezier(.4,0,.6,1) infinite; }
+  @keyframes pulse { 50% { opacity: .5; } }
+
+  /* ── shell ── */
+  .shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: 600px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; font-size: 13px;
+    background: radial-gradient(circle at top left, rgba(234,88,12,0.08), transparent 34%), linear-gradient(135deg, rgba(248,250,252,0.96), rgba(241,245,249,0.72)); }
+  .shell .sb { background: color-mix(in oklab, var(--sidebar) 92%, transparent); border-right: 1px solid color-mix(in oklab, var(--sidebar-border) 70%, transparent); box-shadow: 12px 0 34px -28px rgba(15,23,42,.7); backdrop-filter: blur(24px); display: flex; flex-direction: column; }
+  .shell .brand { display: flex; align-items: center; gap: 12px; height: 80px; padding: 12px 16px; border-bottom: 1px solid color-mix(in oklab, var(--sidebar-border) 70%, transparent); }
+  .shell .brand i { width: 36px; height: 36px; border-radius: 12px; background: var(--primary); box-shadow: 0 12px 24px -12px rgba(234,88,12,.8); display: inline-flex; align-items: center; justify-content: center; }
+  .shell .brand i svg { width: 16px; height: 16px; stroke: #fff; fill: none; stroke-width: 2; }
+  .shell .brand b { display: block; font-size: 14px; font-weight: 600; letter-spacing: -.01em; } .shell .brand small { font-size: 11px; color: color-mix(in oklab, var(--foreground) 70%, transparent); }
+  .shell .tenant { padding: 10px; border-bottom: 1px solid color-mix(in oklab, var(--sidebar-border) 70%, transparent); display: flex; align-items: center; gap: 8px; }
+  .shell .tenant span { flex: 1; height: 32px; border: 1px solid color-mix(in oklab, var(--sidebar-border) 70%, transparent); background: color-mix(in oklab, var(--sidebar-accent) 50%, transparent); border-radius: 12px; font-size: 12px; font-weight: 500; display: flex; align-items: center; padding: 0 8px; justify-content: space-between; }
+  .shell .ctas { padding: 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid color-mix(in oklab, var(--sidebar-border) 70%, transparent); }
+  .shell .ctas a { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; border-radius: 12px; font-size: 14px; font-weight: 600; }
+  .shell .ctas .p { background: var(--primary); color: #fff; }
+  .shell .ctas .e { border: 1px solid rgba(16,185,129,.4); background: rgba(16,185,129,.15); color: var(--emerald-700); }
+  .shell .ctas svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .shell .grp { padding: 12px 12px 0; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .18em; color: color-mix(in oklab, var(--foreground) 45%, transparent); }
+  .shell .it { margin: 4px 10px 0; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; font-size: 14px; font-weight: 600; color: color-mix(in oklab, var(--foreground) 68%, transparent); }
+  .shell .it svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .shell .it.on { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); box-shadow: 0 12px 24px -18px rgba(15,23,42,.55); }
+  .shell .mn { position: relative; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  .shell .mn::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .4; background: linear-gradient(rgba(15,23,42,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,42,.035) 1px, transparent 1px); background-size: 40px 40px; }
+  .shell .hd2 { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; min-height: 80px; padding: 20px 24px; border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent); background: color-mix(in oklab, var(--background) 88%, transparent); backdrop-filter: blur(24px); box-shadow: 0 1px 0 rgba(15,23,42,.03), 0 18px 36px -32px rgba(15,23,42,.45); }
+  .shell .hd2 h5 { margin: 6px 0 0; font-size: 20px; font-weight: 700; letter-spacing: -.01em; }
+  .shell .hd2 p { margin: 6px 0 0; font-size: 14px; color: var(--muted-foreground); }
+  .shell .hd2 .r { display: flex; gap: 8px; align-items: center; padding-top: 2px; }
+  .shell .hd2 .r i { width: 36px; height: 36px; border-radius: 12px; border: 1px solid var(--border); background: var(--background); display: inline-block; }
+  .shell .ct { position: relative; z-index: 1; padding: 24px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+  .shell .blk { border-radius: 16px; border: 1px solid var(--border); background: var(--card); box-shadow: var(--shadow-sm); height: 120px; }
+
+  .finding { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px 14px; padding: 14px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+  .finding .k { font-family: var(--font-mono); color: var(--primary); font-weight: 500; }
+  .finding b { font-weight: 600; } .finding p { margin: 4px 0 0; color: var(--slate-600); }
+  .pat { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: #fff; }
+  .pat h4 { margin: 0 0 4px; font-size: 14px; font-weight: 600; } .pat p { margin: 0; font-size: 13px; color: var(--slate-600); } .pat .src { display: block; margin-top: 8px; }
+  @media (max-width: 1000px) { .doc { grid-template-columns: 1fr; } .toc { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); } .content { padding: 24px 20px 64px; } .two, .three { grid-template-columns: 1fr; } .swatches { grid-template-columns: repeat(3, minmax(0, 1fr)); } .shell { grid-template-columns: 1fr; height: auto; } .shell .sb { display: none; } }
+</style>
+</head>
+<body>
+<div class="doc">
+  <nav class="toc">
+    <div class="t"><i></i>Pulse</div>
+    <div class="v">Design system · kondisi saat ini · Sep 2026</div>
+    <h5>Dasar</h5>
+    <a href="#ringkasan">Ringkasan</a><a href="#warna">Warna</a><a href="#tipografi">Tipografi</a><a href="#bentuk">Bentuk, bayangan &amp; blur</a><a href="#shell">Shell layout</a>
+    <h5>Komponen</h5>
+    <a href="#tombol">Tombol</a><a href="#form">Form</a><a href="#tab">Tab, pill &amp; chip</a><a href="#header">Header &amp; judul seksi</a><a href="#kartu">Kartu &amp; angka</a><a href="#tabel">Tabel</a><a href="#status">Lencana status</a><a href="#pesan">Pesan, dialog &amp; kosong</a>
+    <h5>Halaman</h5>
+    <a href="#pola">Pola halaman yang ada</a><a href="#temuan">Temuan &amp; inkonsistensi</a>
+  </nav>
+
+  <main class="content">
+    <h1>Pulse Design System<br><span style="color: var(--muted-foreground); font-weight: 500;">kondisi saat ini</span></h1>
+    <p class="lead">Dokumentasi apa adanya dari tampilan app yang berjalan di <code>main</code> hari ini: token dari <code>app/globals.css</code>, komponen dari <code>components/ui/*</code>, dan pola yang dipakai halaman-halaman utama. Setiap contoh di bawah dirender dengan nilai yang sama dengan kode — bukan usulan. Usulan perubahan ada di berkas terpisah, <a href="./usulan-pulse-design-system.html">usulan-pulse-design-system.html</a>.</p>
+
+    <!-- ═════════ RINGKASAN ═════════ -->
+    <section id="ringkasan">
+      <h2><span class="n">01</span>Ringkasan</h2>
+      <p class="d">Basis: shadcn/ui gaya <em>new-york</em> di atas Tailwind v4, tema dihasilkan tweakcn (nilai oklch), primer oranye, aksen biru muda, radius besar 12px, huruf Figtree. Di atas dasar itu, komponen halaman menambahkan lapisan dekoratif: latar gradien + pola grid, sidebar dan header berbayang dengan <code>backdrop-blur</code>, dan palet Tailwind (emerald/amber/rose/sky/violet…) yang dipilih per komponen.</p>
+      <div class="three">
+        <div class="pat"><h4>Satu tema, dua aksen</h4><p><code>--primary</code> oranye (tombol, logo, CTA, overline) dan <code>--accent</code>/<code>--sidebar-accent</code> biru muda (hover menu, item sidebar aktif, skeleton).</p></div>
+        <div class="pat"><h4>Warna status dari palet Tailwind</h4><p>Tidak ada token semantik. Emerald = selesai/lolos/tinggi, amber = draft/peringatan/sedang, rose = kritis/gagal, sky = berjalan/info, slate = netral. Dipilih per komponen dengan kelas penuh.</p></div>
+        <div class="pat"><h4>Kartu di mana-mana</h4><p>Semua konten dalam <code>Card</code> (rounded-xl, shadow-sm) atau <code>Cell</code> bento (rounded-2xl, hover:shadow-md). Angka ringkasan berupa kartu KPI dengan ikon dalam kotak berwarna.</p></div>
+      </div>
+    </section>
+
+    <!-- ═════════ WARNA ═════════ -->
+    <section id="warna">
+      <h2><span class="n">02</span>Warna</h2>
+      <p class="d">Token semantik shadcn di <code>:root</code> (mode terang). Nilai persis dari <code>app/globals.css</code>; hue 244–265 pada netral dan aksen adalah abu-biru bawaan tema tweakcn.</p>
+      <div class="swatches">
+        <div class="swatch" style="background: var(--primary); color: #fff;"><b>--primary</b>oklch(0.6867 0.1827 45.32) ≈ #EA580C</div>
+        <div class="swatch" style="background: var(--accent); color: var(--accent-foreground);"><b>--accent</b>oklch(0.9119 0.0222 243.82) — biru</div>
+        <div class="swatch" style="background: var(--accent-foreground); color: #fff;"><b>--accent-foreground</b>oklch(0.3791 0.1378 265.52)</div>
+        <div class="swatch" style="background: var(--background);"><b>--background</b>oklch(0.9607 0.0017 247.84)</div>
+        <div class="swatch" style="background: var(--card); "><b>--card</b>oklch(1 0 0) putih</div>
+        <div class="swatch" style="background: var(--foreground); color: #fff;"><b>--foreground</b>oklch(0.3211 0 0) abu 32%</div>
+        <div class="swatch" style="background: var(--muted);"><b>--muted</b>oklch(0.9846 0.0017 247.84)</div>
+        <div class="swatch" style="background: var(--muted-foreground); color: #fff;"><b>--muted-foreground</b>oklch(0.5510 0.0234 264.36)</div>
+        <div class="swatch" style="background: var(--secondary); color: var(--secondary-foreground);"><b>--secondary</b>oklch(0.9670 0.0029 264.54)</div>
+        <div class="swatch" style="background: var(--border);"><b>--border</b>oklch(0.9022 0.0052 247.88)</div>
+        <div class="swatch" style="background: var(--destructive); color: #fff;"><b>--destructive</b>oklch(0.6368 0.2078 25.33)</div>
+        <div class="swatch" style="background: var(--warning); color: #3d2a06;"><b>--warning</b>oklch(0.7690 0.1650 70.08) — tidak dipakai komponen</div>
+        <div class="swatch" style="background: var(--sidebar);"><b>--sidebar</b>oklch(0.9700 0.0029 264.54)</div>
+        <div class="swatch" style="background: var(--sidebar-accent); color: var(--sidebar-accent-foreground);"><b>--sidebar-accent</b>= --accent (biru)</div>
+        <div class="swatch" style="background: var(--ring); color: #fff;"><b>--ring</b>oklch(0.6397 0.1720 36.44) oranye-merah</div>
+        <div class="swatch" style="background: var(--input);"><b>--input</b>oklch(0.9700 0.0029 264.54)</div>
+        <div class="swatch" style="background: oklch(0.7156 0.0605 248.68); color:#fff"><b>--chart-1</b>biru pucat (chart-2…5 ada, tak dipakai)</div>
+        <div class="swatch" style="background: oklch(0.2598 0.0306 262.67); color: #fff;"><b>.dark --background</b>oklch(0.2598 0.0306 262.67) navy</div>
+      </div>
+
+      <h3>Palet Tailwind yang dipakai komponen (di luar token)</h3>
+      <p>Pola umumnya <code>border-{hue}-200 bg-{hue}-500/10 text-{hue}-700</code> untuk lencana, <code>bg-{hue}-500/15</code> untuk kotak ikon, <code>bg-{hue}-500</code> untuk bar.</p>
+      <table class="doc">
+        <tr><th>Hue</th><th>Arti yang dipakai</th><th>Di mana</th></tr>
+        <tr><td><span class="sw" style="background: var(--emerald-500)"></span>emerald</td><td>selesai · lolos · coverage ≥ 80% · Strong bench · CTA Talent Pool · Ready now · Readiness <em>Short</em> (editor) / <em>Long</em> (detail posisi)</td><td>dashboard, positions, talent-pool, sidebar, readiness-editor</td></tr>
+        <tr><td><span class="sw" style="background: var(--amber-500)"></span>amber</td><td>draft · belum scoring · coverage 50–79% · Watchlist · Medium · peringatan "diantrekan" · CollapsibleCard <code>caution</code></td><td>positions, dashboard, wizard, sync</td></tr>
+        <tr><td><span class="sw" style="background: var(--rose-500)"></span>rose</td><td>coverage &lt; 50% · Critical gap · Not Ready (detail) · perlu pergantian · CollapsibleCard <code>danger</code> · seksi Job Family</td><td>dashboard, positions, hub-chrome, candidate-data-card</td></tr>
+        <tr><td><span class="sw" style="background: var(--sky-500)"></span>sky</td><td>sedang berjalan · Company badge · Incumbent coverage · Long (editor) · banner snapshot · seksi Dokumen</td><td>positions, dashboard, sync-match-view, hub-chrome</td></tr>
+        <tr><td><span class="sw" style="background: var(--blue-500)"></span>blue</td><td>Readiness <em>Short</em> (detail posisi)</td><td>position-detail-tabs</td></tr>
+        <tr><td><span class="sw" style="background: var(--violet-500)"></span>violet</td><td>metode AHP + TOPSIS · Talent pool KPI · seksi Struktur</td><td>positions, dashboard, hub-chrome</td></tr>
+        <tr><td><span class="sw" style="background: var(--indigo-500)"></span>indigo</td><td>ikon HAV Heat Grid</td><td>dashboard</td></tr>
+        <tr><td><span class="sw" style="background: var(--teal-500)"></span>teal / <span class="sw" style="background: var(--orange-500)"></span>orange</td><td>5-Box STRONG / BORDER (TOP emerald, SOLID amber, BOTTOM rose)</td><td>lib/hav-box-meta.ts</td></tr>
+        <tr><td><span class="sw" style="background: var(--slate-500)"></span>slate</td><td>netral · Not Ready (editor) · baris dikecualikan · teks judul (<code>text-slate-950</code>) · latar strip pill</td><td>hampir semua halaman</td></tr>
+      </table>
+    </section>
+
+    <!-- ═════════ TIPOGRAFI ═════════ -->
+    <section id="tipografi">
+      <h2><span class="n">03</span>Tipografi</h2>
+      <p class="d">Figtree dimuat lewat <code>next/font</code> di <code>app/layout.tsx</code> dan dipasang sebagai kelas body, dengan <code>font-feature-settings: "cv11","ss01","ss03"</code>. Token <code>--font-sans</code> di <code>:root</code> masih bertuliskan <em>Inter</em>, tetapi <code>@theme inline</code> menimpanya dengan Figtree sehingga yang tampil adalah Figtree. Skala tidak dideklarasikan — ukuran muncul dari kelas Tailwind per komponen, termasuk banyak ukuran arbitrer (<code>text-[10px]</code>, <code>text-[11px]</code>, <code>text-[9px]</code>).</p>
+      <div class="type">
+        <div><span class="k">hero h2 · text-2xl bold tracking-tight</span><span style="font-size: 24px; font-weight: 700; letter-spacing: -.025em; color: var(--slate-950)">Predictive Usage for Leadership &amp; Successor Excellence</span></div>
+        <div><span class="k">judul halaman · text-xl bold</span><span style="font-size: 20px; font-weight: 700; letter-spacing: -.025em;">Manajemen Posisi</span></div>
+        <div><span class="k">angka besar · text-3xl bold tabular-nums</span><span style="font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--slate-950)">12</span></div>
+        <div><span class="k">angka KPI · text-2xl bold / StatCard text-xl</span><span style="font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums;">42 <span style="font-size:20px">· 318</span></span></div>
+        <div><span class="k">judul kartu · text-sm semibold (CardTitle)</span><span style="font-size: 14px; font-weight: 600;">Posisi — Coverage readiness terendah</span></div>
+        <div><span class="k">teks isi · text-sm (14px)</span><span style="font-size: 14px;">Kandidat aktif yang lolos filter kelayakan program, dihitung langsung dari data saat ini.</span></div>
+        <div><span class="k">teks kecil · text-xs (12px) muted</span><span style="font-size: 12px; color: var(--muted-foreground)">lolos dari 412 karyawan</span></div>
+        <div><span class="k">meta · text-[11px] muted</span><span style="font-size: 11px; color: var(--muted-foreground)">IT Application Development Department · 2026-09-15 13:02</span></div>
+        <div><span class="k">label KPI · text-[10px] semibold uppercase tracking-wider</span><span style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground)">Talent pool</span></div>
+        <div><span class="k">grup sidebar · text-[10px] uppercase tracking-[0.18em]</span><span style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .18em; color: rgba(0,0,0,.45)">Alur Kerja</span></div>
+        <div><span class="k">overline header · text-[10px] bold tracking-[0.22em] text-primary/75</span><span class="overline">PULSE COMMAND CENTER</span></div>
+        <div><span class="k">lencana · text-xs medium / text-[10px] bold / text-[9px]</span><span><span class="badge outline">text-xs</span> <span class="badge tiny emerald">TEXT-[10PX]</span> <span class="badge violet" style="font-size:9px; font-weight:400">AHP + TOPSIS</span></span></div>
+        <div><span class="k">mono · JetBrains Mono (kode, id run)</span><span class="mono">scoring_runs.run_info · 3f9a-…-c21e</span></div>
+      </div>
+    </section>
+
+    <!-- ═════════ BENTUK ═════════ -->
+    <section id="bentuk">
+      <h2><span class="n">04</span>Bentuk, bayangan &amp; blur</h2>
+      <p class="d"><code>--radius: 0.75rem</code> membuat semua radius shadcn besar: <code>rounded-md</code> 12px untuk tombol/input, <code>rounded-lg</code> 14px untuk dialog/kotak ikon, <code>rounded-xl</code> 18px untuk Card, <code>rounded-2xl</code> 16px (bawaan Tailwind, tidak ikut token) untuk Cell bento, dan <code>rounded-full</code> untuk lencana, chip program, bar. Bayangan: <code>shadow-sm</code> di setiap Card, <code>shadow-xs</code> di input/outline, dan bayangan panjang kustom di header, sidebar, logo, item aktif.</p>
+      <div class="radii">
+        <div style="border-radius: 12px">md · 12px</div>
+        <div style="border-radius: 14px">lg · 14px</div>
+        <div style="border-radius: 16px">2xl · 16px</div>
+        <div style="border-radius: 18px">xl · 18px</div>
+        <div style="border-radius: 999px">full</div>
+        <div style="border-radius: 18px; box-shadow: var(--shadow-md)">shadow-md</div>
+        <div style="border-radius: 18px; box-shadow: 0 1px 0 rgba(15,23,42,.03), 0 18px 36px -32px rgba(15,23,42,.45)">header</div>
+        <div style="border-radius: 12px; box-shadow: 0 12px 24px -12px rgba(234,88,12,.8); background: var(--primary); color:#fff">logo</div>
+      </div>
+      <h3>Spasi</h3>
+      <p>Basis Tailwind 4px. Padding kartu 24px (<code>py-6 px-6</code>), Cell bento 16px, StatCard 12px, konten halaman <code>p-4 lg:p-6</code>, gap grid 12px. Ukuran root 16px → 15px (≤1536px) → 14px (≤1280px) untuk kepadatan di layar berskala Windows 125–150%.</p>
+    </section>
+
+    <!-- ═════════ SHELL ═════════ -->
+    <section id="shell">
+      <h2><span class="n">05</span>Shell layout</h2>
+      <p class="d">Sidebar 240px (<code>bg-sidebar/92 backdrop-blur-xl</code>, bayangan ke kanan) · latar app gradien radial oranje + linear + pola grid 40px pada <code>&lt;main&gt;</code> · header <code>min-h-20 bg-background/88 backdrop-blur-xl</code> dengan overline, judul, deskripsi, ThemeToggle, UserMenu. Item sidebar aktif memakai <code>bg-sidebar-accent</code> (biru) + bayangan; CTA Mulai Scoring oranye penuh, Talent Pool emerald.</p>
+      <div class="shell">
+        <aside class="sb">
+          <div class="brand"><i><svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></i><div><b>PULSE</b><small>Leadership &amp; Successor Excellence</small></div></div>
+          <div class="tenant"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--muted-foreground)"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg><span>Mulia <span style="opacity:.5">⌄</span></span></div>
+          <div class="ctas"><a class="p"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/></svg>Mulai Scoring</a><a class="e"><svg viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>Talent Pool</a></div>
+          <div class="grp">Alur Kerja</div>
+          <div class="it on"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Beranda</div>
+          <div class="it"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>Scoring Engine</div>
+          <div class="grp">Data Referensi</div>
+          <div class="it"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Kandidat</div>
+          <div class="it"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Profil Job</div>
+          <div class="grp">Administrasi</div>
+          <div class="it"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Tata Kelola</div>
+          <div class="it"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>Sinkronisasi</div>
+          <div class="it"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>Pengguna &amp; Akses</div>
+        </aside>
+        <div class="mn">
+          <div class="hd2"><div><span class="overline">PULSE COMMAND CENTER</span><h5>Sistem Penentuan Talent &amp; Successor</h5></div><div class="r"><span class="btn default sm">Posisi</span><i></i><i></i></div></div>
+          <div class="ct">
+            <div class="blk" style="grid-column: span 4; grid-row: span 2; height: auto; border-color: color-mix(in oklab, var(--primary) 20%, transparent); background: radial-gradient(circle at top right, rgba(234,88,12,.14), transparent 55%), var(--card)"></div>
+            <div class="blk" style="grid-column: span 2; border-color: rgba(167,243,208,.6); background: linear-gradient(to bottom right, rgba(16,185,129,.10), var(--card))"></div>
+            <div class="blk" style="grid-column: span 2; border-color: rgba(186,230,253,.6); background: linear-gradient(to bottom right, rgba(14,165,233,.10), var(--card))"></div>
+            <div class="blk" style="grid-column: span 2; height: 180px"></div><div class="blk" style="grid-column: span 2; height: 180px"></div><div class="blk" style="grid-column: span 2; height: 180px"></div>
+          </div>
+        </div>
+      </div>
+      <p class="src" style="margin-top: 10px">app/(dashboard)/layout.tsx · components/sidebar-nav.tsx · components/dashboard-header.tsx · components/tenant-switcher.tsx</p>
+    </section>
+
+    <!-- ═════════ TOMBOL ═════════ -->
+    <section id="tombol">
+      <h2><span class="n">06</span>Tombol</h2>
+      <p class="d"><code>components/ui/button.tsx</code> — cva bawaan shadcn. Tinggi 36px (default), 32 (sm), 24 (xs), 40 (lg); <code>rounded-md</code> = 12px; fokus <code>ring-[3px] ring-ring/50</code>. Hover outline/ghost mewarnai dengan <code>bg-accent</code> (biru muda).</p>
+      <div class="spec"><div class="body white">
+        <div class="row">
+          <span class="btn default">Simpan program</span>
+          <span class="btn secondary">Samarkan data</span>
+          <span class="btn outline">Muat ulang</span>
+          <span class="btn ghost">Lihat Semua →</span>
+          <span class="btn destructive">Hapus</span>
+          <span class="btn link">Pengaturan Job Family</span>
+          <span class="btn default" disabled>Simpan program</span>
+        </div>
+        <div class="row" style="margin-top: 16px">
+          <span class="btn default sm"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>Posisi</span>
+          <span class="btn outline sm">‹ Sebelumnya</span>
+          <span class="btn outline xs">Ubah</span>
+          <span class="btn default lg">Jalankan Pencocokan</span>
+          <span class="btn outline icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></span>
+          <span class="btn cta-emerald">Talent Pool</span>
+          <span class="btn cta-emerald on">Talent Pool (aktif)</span>
+        </div>
+      </div><div class="cap"><b>Varian</b> default · secondary · outline · ghost · destructive · link <b>Ukuran</b> default h-9 · sm h-8 · xs h-6 · lg h-10 · icon <b>Di luar cva</b> CTA emerald di sidebar</div></div>
+    </section>
+
+    <!-- ═════════ FORM ═════════ -->
+    <section id="form">
+      <h2><span class="n">07</span>Form</h2>
+      <p class="d">Input dan Select trigger <code>h-9 rounded-md border-input bg-card shadow-xs</code>; fokus border ring + <code>ring-[3px] ring-ring/50</code>; invalid border destructive + ring destructive/20. Label <code>text-sm font-medium</code>.</p>
+      <div class="spec"><div class="body white">
+        <div class="three">
+          <div class="field"><label>Cari posisi</label><input class="input" placeholder="Ketik judul posisi…"><span class="hint">Pencarian ILIKE pada judul dan departemen.</span></div>
+          <div class="field"><label>Program</label><div class="sel"><span class="input">Critical Position</span></div></div>
+          <div class="field"><label>Nama program</label><input class="input err" value="  "><span class="msg">Nama program wajib diisi.</span></div>
+        </div>
+      </div><div class="cap"><b>Sumber</b> components/ui/input.tsx · select.tsx · combobox (tenant) · label.tsx</div></div>
+    </section>
+
+    <!-- ═════════ TAB ═════════ -->
+    <section id="tab">
+      <h2><span class="n">08</span>Tab, pill &amp; chip</h2>
+      <p class="d">Empat gaya navigasi sekunder hidup berdampingan: Tabs shadcn (segmen di atas <code>bg-muted</code>), Tabs varian <code>line</code>, tab besar berwarna di Talent Pool, dan strip pill lima warna di hub Profil Job. Chip program memakai oranye transparan; chip filter band memakai warna band.</p>
+      <div class="spec"><div class="body">
+        <div class="row">
+          <div class="tabs"><span class="on">Kandidat</span><span>Konfigurasi Run</span><span>Riwayat</span><span>Silsilah</span></div>
+          <div class="tabs line"><span class="on">Pengguna</span><span>Peran &amp; Akses</span></div>
+          <div class="tabs big"><span class="on">🏆 Lolos <span class="badge secondary" style="background: rgba(255,255,255,.25); color:#fff">118</span></span><span>Tidak lolos <span class="badge secondary">294</span></span></div>
+        </div>
+        <div class="row" style="margin-top: 16px">
+          <div class="pillstrip">
+            <span class="pill sky on"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Dokumen<span class="dot"></span></span>
+            <span class="pill violet"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M5 16v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2"/></svg>Struktur Posisi</span>
+            <span class="pill emerald"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Job Profile Match</span>
+            <span class="pill amber"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Kamus Kompetensi</span>
+            <span class="pill rose"><svg viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Job Family</span>
+          </div>
+        </div>
+        <div class="row" style="margin-top: 16px">
+          <span class="chip program">Critical Position <span style="opacity:.7">·</span> 28</span>
+          <span class="chip filter on">Strong bench <b>×</b></span><span class="chip filter">Watchlist</span><span class="chip filter">Critical gap</span>
+          <span class="badge emerald">Strong bench · coverage ≥ 80%</span>
+        </div>
+      </div><div class="cap"><b>Sumber</b> components/ui/tabs.tsx · talent-pool-page-client.tsx (tab h-11 emerald/rose) · job-profiles/hub-chrome.tsx (SECTION_STYLE) · positions-page-client.tsx (chip program &amp; band)</div></div>
+    </section>
+
+    <!-- ═════════ HEADER ═════════ -->
+    <section id="header">
+      <h2><span class="n">09</span>Header &amp; judul seksi</h2>
+      <p class="d">Tiga bentuk judul: header halaman (overline + h1 20px + deskripsi), judul Cell bento (ikon dalam kotak 32px berwarna + judul 14px + sub 11px), dan header CollapsibleCard (band berwarna 4 nada + judul dengan ikon + ringkasan + chevron).</p>
+      <div class="spec"><div class="body">
+        <div style="background: color-mix(in oklab, var(--background) 88%, transparent); border: 1px solid color-mix(in oklab, var(--border) 70%, transparent); border-radius: 12px; padding: 20px 24px; display:flex; justify-content: space-between; gap: 24px; box-shadow: 0 1px 0 rgba(15,23,42,.03), 0 18px 36px -32px rgba(15,23,42,.45); backdrop-filter: blur(24px);">
+          <div><span class="overline">PULSE COMMAND CENTER</span><div style="font-size: 20px; font-weight: 700; letter-spacing: -.02em; margin-top: 6px">Sinkronisasi</div><div style="font-size: 14px; color: var(--muted-foreground); margin-top: 6px">Tarik data HR, petakan Company, dan pantau riwayat sinkronisasi. Cron berjalan Senin 01.00.</div></div>
+          <div class="row" style="align-items:flex-start"><span class="btn default sm">Jalankan Sinkronisasi Penuh</span><span class="btn outline icon sm" style="width:32px"></span></div>
+        </div>
+        <div class="two" style="margin-top: 16px">
+          <div class="cell" style="height: 96px"><div class="cellhead"><span class="ic" style="background: rgba(244,63,94,.15); color: #e11d48"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><div><p>Posisi</p><small>Coverage readiness terendah</small></div></div></div>
+          <div class="cell" style="height: 96px"><div class="cellhead"><span class="ic" style="background: rgba(99,102,241,.15); color: var(--indigo-600)"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></span><div><p>HAV Heat Grid</p><small>PA × kompetensi behavioral · 16 kuadran</small></div></div></div>
+        </div>
+      </div><div class="cap"><b>Sumber</b> dashboard-header.tsx · dashboard-page-client.tsx (CellHead) · settings/collapsible-card.tsx</div></div>
+    </section>
+
+    <!-- ═════════ KARTU ═════════ -->
+    <section id="kartu">
+      <h2><span class="n">10</span>Kartu &amp; angka</h2>
+      <p class="d">Card shadcn (<code>rounded-xl border shadow-sm py-6 gap-6</code>) untuk isi halaman; Cell bento (<code>rounded-2xl</code>, hover shadow-md) di Beranda; tiga jenis kartu angka: tile KPI di dalam hero (latar putih 60% + blur), StatCard besar bergradien emerald/sky dengan ikon 36px, dan StatCard kecil (Job Profile Match, Talent Pool) dengan label uppercase 10px + angka 20px.</p>
+      <div class="spec"><div class="body">
+        <div class="three">
+          <div class="kpi"><div class="l"><svg viewBox="0 0 24 24" style="color: #0284c7"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>Positions</div><div class="v">42</div><div class="n">28 sudah scoring</div></div>
+          <div class="kpi"><div class="l"><svg viewBox="0 0 24 24" style="color: #7c3aed"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Talent pool</div><div class="v">118</div><div class="n">lolos dari 412 karyawan</div></div>
+          <div class="kpi"><div class="l"><svg viewBox="0 0 24 24" style="color: #e11d48"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/></svg>Perlu pergantian</div><div class="v">6</div><div class="n">pejabat mendekati pensiun</div></div>
+        </div>
+        <div class="three" style="margin-top: 12px">
+          <div class="bigstat"><div style="display:flex; justify-content: space-between"><span class="ic"><svg viewBox="0 0 24 24"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg></span></div><div><div class="v">12</div><div class="t">Ready now / soon</div><div class="n">67% dari kandidat hasil scoring</div></div></div>
+          <div class="bigstat sky"><div style="display:flex; justify-content: space-between"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span><span style="font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color: rgba(3,105,161,.7)">Incumbent</span></div><div><div class="v">91%</div><div class="t">Incumbent coverage</div><div class="bar thin"><i style="width: 91%; background: var(--sky-500)"></i></div></div></div>
+          <div style="display:grid; gap: 8px">
+            <div class="stat"><div class="l">Terpetakan</div><div class="v" style="color:#059669">318</div><div class="h">dari 284 posisi</div></div>
+            <div class="stat"><div class="l">Posisi tanpa profil <span style="margin-left:auto; opacity:.4">🔍</span></div><div class="v" style="color:#d97706">22</div><div class="h">klik untuk daftar</div></div>
+          </div>
+        </div>
+        <div class="two" style="margin-top: 16px">
+          <div class="card"><div class="ch"><h4>Ringkasan Data</h4><p>Jumlah baris per modul dari sinkronisasi terakhir.</p></div><div class="cb" style="padding-top: 16px; font-size: 13px; color: var(--slate-600)">Isi kartu (px-6, teks 14px).</div></div>
+          <div class="coll primary"><div class="hd"><h4><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>Pemetaan Company <span class="sum">3 aktif · 1 nonaktif</span></h4><svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></div><div class="bd">CollapsibleCard <code>accent="primary"</code>, <code>storageKey</code> mengingat buka/tutup per pengguna.</div></div>
+        </div>
+        <div class="three" style="margin-top: 12px">
+          <div class="coll neutral"><div class="hd"><h4><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 3 2 5 2 7h10c0-2 2-4 2-7a7 7 0 0 0-7-7z"/><path d="M9 21h6"/></svg>Pengetahuan AI</h4><svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></div></div>
+          <div class="coll caution"><div class="hd"><h4><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>Koneksi Sumber Data</h4><svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></div></div>
+          <div class="coll danger"><div class="hd"><h4><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>Data Kandidat</h4><svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></div></div>
+        </div>
+      </div><div class="cap"><b>Sumber</b> components/ui/card.tsx · dashboard-page-client.tsx (Cell, heroKpis, Ready now, Incumbent) · job-family/sync-match-view.tsx (StatCard) · settings/collapsible-card.tsx (CARD_ACCENT: primary / neutral / caution / danger)</div></div>
+    </section>
+
+    <!-- ═════════ TABEL ═════════ -->
+    <section id="tabel">
+      <h2><span class="n">11</span>Tabel</h2>
+      <p class="d"><code>components/ui/table.tsx</code> bawaan: <code>text-sm</code>, kepala <code>h-10 px-2 font-medium</code> warna foreground (bukan muted), sel <code>p-2</code>, baris <code>border-b hover:bg-muted/50</code>. Daftar posisi dan kandidat memakai <em>kartu per baris</em> ketimbang tabel; tabel dipakai di Riwayat, Sinkronisasi, Kamus, dan peringkat kandidat.</p>
+      <div class="spec"><div class="body white" style="padding: 0">
+        <table class="data">
+          <thead><tr><th>#</th><th>Kandidat</th><th>Departemen</th><th>Readiness</th><th style="text-align:right">Skor</th><th>Metode</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td><b style="font-weight:500">Andi Prasetyo</b><span class="m">NPK 00370 · Grade 6</span></td><td>IT Application Development</td><td><span class="badge tiny blue">SHORT</span></td><td style="text-align:right; font-variant-numeric: tabular-nums">86.4</td><td><span class="badge violet" style="font-size:9px; font-weight:400">AHP + TOPSIS</span></td><td><span class="btn ghost xs">Simulasi</span></td></tr>
+            <tr><td>2</td><td><b style="font-weight:500">Budi Santoso</b><span class="m">NPK 01204 · Grade 6</span></td><td>IT Infrastructure</td><td><span class="badge tiny amber">MEDIUM</span></td><td style="text-align:right; font-variant-numeric: tabular-nums">79.1</td><td><span class="badge violet" style="font-size:9px; font-weight:400">AHP + TOPSIS</span></td><td><span class="btn ghost xs">Simulasi</span></td></tr>
+            <tr style="opacity:.6; background: rgba(241,245,249,.6)"><td>3</td><td><b style="font-weight:500">Citra Dewi</b><span class="m">NPK 00981 · Grade 5 · tidak dipertimbangkan</span></td><td>Finance</td><td><span class="badge tiny rose">NOT READY</span></td><td style="text-align:right; font-variant-numeric: tabular-nums">61.2</td><td><span class="badge violet" style="font-size:9px; font-weight:400">AHP + TOPSIS</span></td><td></td></tr>
+          </tbody>
+        </table>
+      </div><div class="cap"><b>Sumber</b> components/ui/table.tsx · position-detail-tabs.tsx (readinessTone, excludedRowTone) · positions-page-client.tsx (methodMeta)</div></div>
+    </section>
+
+    <!-- ═════════ STATUS ═════════ -->
+    <section id="status">
+      <h2><span class="n">12</span>Lencana status</h2>
+      <p class="d">Badge shadcn: <code>rounded-full px-2 py-0.5 text-xs font-medium</code>, varian default/secondary/destructive/outline. Hampir semua pemakaian adalah <code>variant="outline"</code> + kelas warna Tailwind. Bar progres <code>h-2 rounded-full bg-muted</code> dengan isi emerald/amber/rose menurut ambang 80/50.</p>
+      <div class="spec"><div class="body white">
+        <div class="row"><span class="badge default">default</span><span class="badge secondary">secondary</span><span class="badge destructive">destructive</span><span class="badge outline">outline</span></div>
+        <h3 style="margin-top: 20px">Status run &amp; posisi</h3>
+        <div class="row"><span class="badge emerald">Selesai</span><span class="badge amber">Draft / Belum scoring</span><span class="badge sky">Sedang berjalan</span><span class="badge slate">Netral</span><span class="badge violet">AHP + TOPSIS</span><span class="badge amber">Tanpa job profile</span><span class="badge amber">Belum ada suksesor dipilih</span><span class="badge sky">Company · Mulia</span></div>
+        <h3 style="margin-top: 20px">Readiness — dua peta warna yang berbeda</h3>
+        <div class="row"><span style="font-size:12px; color: var(--muted-foreground); width: 180px">detail posisi / perbandingan</span><span class="badge tiny blue">SHORT</span><span class="badge tiny amber">MEDIUM</span><span class="badge tiny emerald">LONG</span><span class="badge tiny rose">NOT READY</span></div>
+        <div class="row" style="margin-top: 8px"><span style="font-size:12px; color: var(--muted-foreground); width: 180px">editor readiness / band</span><span class="badge emerald">Short</span><span class="badge amber">Medium</span><span class="badge sky">Long</span><span class="badge slate">Not Ready</span></div>
+        <h3 style="margin-top: 20px">Bar coverage &amp; 5-Box</h3>
+        <div class="two">
+          <div><div style="display:flex; justify-content: space-between; font-size: 12px"><span>Bench coverage</span><b style="color: var(--emerald-700)">84%</b></div><div class="bar"><i style="width:84%"></i></div><div class="bar"><i style="width: 62%; background: var(--amber-500)"></i></div><div class="bar"><i style="width: 31%; background: var(--rose-500)"></i></div></div>
+          <div class="row" style="align-items: stretch">
+            <span class="badge" style="background: rgba(16,185,129,.15); color: var(--emerald-700); border-color: rgba(16,185,129,.3)">TOP</span>
+            <span class="badge" style="background: rgba(20,184,166,.15); color: #0f766e; border-color: rgba(20,184,166,.3)">STRONG</span>
+            <span class="badge" style="background: rgba(245,158,11,.15); color: var(--amber-700); border-color: rgba(245,158,11,.3)">SOLID</span>
+            <span class="badge" style="background: rgba(249,115,22,.15); color: #c2410c; border-color: rgba(249,115,22,.3)">BORDER</span>
+            <span class="badge" style="background: rgba(244,63,94,.15); color: var(--rose-700); border-color: rgba(244,63,94,.3)">BOTTOM</span>
+          </div>
+        </div>
+      </div><div class="cap"><b>Sumber</b> components/ui/badge.tsx · positions-page-client.tsx (getStatusTone, bandChipMeta, methodMeta, getCoverageBarColor) · position-detail-tabs.tsx · governance/readiness-editor.tsx (LEVEL_COLORS) · lib/hav-box-meta.ts</div></div>
+    </section>
+
+    <!-- ═════════ PESAN ═════════ -->
+    <section id="pesan">
+      <h2><span class="n">13</span>Pesan, dialog &amp; kosong</h2>
+      <p class="d">Alert shadcn dua varian (default, destructive) + banner ad hoc berwarna amber/sky/rose dengan kelas penuh. Dialog dan AlertDialog <code>rounded-lg bg-background p-6 shadow-lg</code> di atas overlay hitam 50%; konfirmasi destruktif memakai AlertDialog (bukan <code>confirm()</code>). Toast sonner <code>richColors</code> kanan atas. Kosong: kotak putus-putus dengan teks 12px.</p>
+      <div class="spec"><div class="body">
+        <div class="two">
+          <div style="display:grid; gap: 12px">
+            <div class="alert"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><b>Pemetaan tersimpan</b><p>Menampilkan snapshot 2026-09-12 14:20. Jalankan pencocokan untuk memperbarui.</p></div>
+            <div class="alert warn"><svg viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></svg><b>Penilaian diantrekan</b><p>Layanan scoring tidak merespons; sesinya sudah tersimpan, jangan jalankan ulang.</p></div>
+            <div class="alert destructive"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg><b>Gagal memuat laporan</b><p>Model AI tidak dapat dihubungi. Coba lagi.</p></div>
+            <div class="empty">Belum ada posisi kritis untuk Company ini.</div>
+            <div style="display:grid; gap: 8px"><div class="skel" style="width: 60%"></div><div class="skel" style="width: 85%"></div><div class="skel" style="width: 40%"></div></div>
+          </div>
+          <div style="display:grid; gap: 12px; align-content: start">
+            <div class="dialog"><svg class="x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg><h4>Hapus program "Emergency Position"?</h4><p>Program dan aturan filternya dihapus. Run yang sudah selesai tetap tersimpan dengan label programnya sendiri.</p><div class="ft"><span class="btn outline">Batal</span><span class="btn destructive">Hapus program</span></div></div>
+            <div class="row"><div class="toast ok"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><b>Kandidat berhasil diperbarui</b></div></div>
+            <div class="row"><div class="toast err"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg><b>Gagal menyimpan</b><small>NPK 00370 sudah dipakai kandidat lain.</small></div></div>
+          </div>
+        </div>
+      </div><div class="cap"><b>Sumber</b> components/ui/alert.tsx · dialog.tsx · alert-dialog.tsx · sonner.tsx (richColors, top-right) · skeleton.tsx (bg-accent animate-pulse) · dashboard-page-client.tsx (EmptyState)</div></div>
+    </section>
+
+    <!-- ═════════ POLA ═════════ -->
+    <section id="pola">
+      <h2><span class="n">14</span>Pola halaman yang ada</h2>
+      <p class="d">Bagaimana halaman-halaman utama menyusun komponen di atas hari ini.</p>
+      <div class="two">
+        <div class="pat"><h4>Beranda — mosaik bento</h4><p>Grid 6 kolom, baris tetap 10.75rem di xl. Hero (4 kolom × 2 baris) bergradien oranye berisi pill "Pulse Command Center", badge Company + progres scoring, judul 2xl, kalimat fokus, 3 tile KPI, bar Bench coverage. Dua StatCard besar (emerald, sky), lalu Posisi terendah, HAV Heat Grid 16 sel + ringkasan 5-Box, Readiness Bands, Audit Trail penuh lebar.</p><span class="src">components/dashboard-page-client.tsx</span></div>
+        <div class="pat"><h4>Daftar — Position Management, Kandidat, Dokumen</h4><p>Header + tombol aksi; baris chip program (oranye) dan chip band; kolom filter; daftar berupa <em>kartu per baris</em> dengan badge status/metode/program, bar coverage, RTC; paginasi teks "Halaman x dari y" dengan tombol outline sm. Dokumen memakai kartu statistik + tabel + polling 10 dtk.</p><span class="src">positions-page-client.tsx · candidates-page-client.tsx · job-profiles/job-profile-documents-client.tsx</span></div>
+        <div class="pat"><h4>Detail posisi — 7 tab</h4><p>Header dengan konteks posisi; Tabs segmen; daftar peringkat kandidat sebagai baris bernomor dengan badge readiness kecil, tombol Simulasi, chip MCU; sub-tab Konfigurasi Run; panel derivasi aspek; Silsilah run dan breadcrumb leluhur.</p><span class="src">position-detail-tabs.tsx · analysis/*</span></div>
+        <div class="pat"><h4>Hub Profil Job — strip pill</h4><p>Header hub + strip pill lima warna di bawahnya; tiap seksi memuat datanya sendiri; Match dibuka pada snapshot tersimpan dengan banner sky dan tombol "Jalankan Pencocokan".</p><span class="src">job-profiles/hub-chrome.tsx · job-profile-match-client.tsx</span></div>
+        <div class="pat"><h4>Tata Kelola — 5 seksi, 2 grup</h4><p>Aturan Penilaian (Program · Instruksi &amp; Model AI · Kesiapan &amp; Pensiun) dan Pemantauan (Umpan Balik · Riwayat). Setiap seksi berlencana cakupan (Company aktif / semua Company); program dipilih lewat chip; editor program dengan bar Simpan lengket dan badge "Belum disimpan".</p><span class="src">governance/governance-client.tsx · governance-program-editor.tsx</span></div>
+        <div class="pat"><h4>Sinkronisasi — tumpukan CollapsibleCard</h4><p>Kartu status (badge, run terbaru, filter Company, tombol Jalankan Sinkronisasi Penuh) → Ringkasan Data → Pemetaan Company (primary) → Unggah berkas (primary) → per modul (neutral) → Riwayat (neutral) → Pengetahuan AI → Pengaturan &amp; Pemeliharaan (caution, caution, danger).</p><span class="src">settings/sync-settings-client.tsx · settings/sync/page.tsx</span></div>
+        <div class="pat"><h4>Wizard Mulai Scoring</h4><p>Langkah bertahap: program → posisi → pool → jalankan (metode selalu AHP + TOPSIS); polling status sesi; hasil "dimulai" (hijau) vs "diantrekan" (amber, "jangan jalankan ulang").</p><span class="src">scoring/scoring-wizard*.tsx</span></div>
+        <div class="pat"><h4>Talent Pool</h4><p>Header + tombol Samarkan data; banner kondisi; StatCard Lolos/Tidak lolos; Tabs besar h-11 berwarna emerald/rose dengan badge hitungan; filter departemen/divisi/aturan; tabel kandidat; paginasi.</p><span class="src">talent-pool-page-client.tsx</span></div>
+      </div>
+    </section>
+
+    <!-- ═════════ TEMUAN ═════════ -->
+    <section id="temuan">
+      <h2><span class="n">15</span>Temuan &amp; inkonsistensi</h2>
+      <p class="d">Hal-hal yang terlihat saat mendokumentasikan, dicatat tanpa mengubah apa pun. Ini bahan untuk memutuskan arah, bukan daftar perbaikan.</p>
+      <div class="finding"><span class="k">01</span><div><b>Dua peta warna readiness saling bertentangan.</b><p><code>position-detail-tabs.tsx</code>: Short = blue, Long = emerald, Not Ready = rose. <code>readiness-editor.tsx</code> dan chip band: Short = emerald, Long = sky, Not Ready = slate. Warna yang sama berarti dua hal berbeda di dua halaman.</p></div></div>
+      <div class="finding"><span class="k">02</span><div><b>Dua aksen dalam satu tema.</b><p><code>--primary</code> oranye untuk tindakan, tetapi <code>--accent</code>, <code>--sidebar-accent</code>, hover tombol outline/ghost, item sidebar aktif, dan skeleton semuanya biru muda (hue 244–265) — bawaan tema yang tidak pernah dipilih.</p></div></div>
+      <div class="finding"><span class="k">03</span><div><b>Token font tidak sinkron dengan yang dimuat.</b><p><code>:root --font-sans: Inter</code> sementara <code>layout.tsx</code> memuat Figtree dan <code>@theme inline</code> menimpanya. Berjalan benar, tetapi token menyesatkan pembaca berikutnya.</p></div></div>
+      <div class="finding"><span class="k">04</span><div><b>Lima warna untuk lima nama seksi.</b><p>Strip hub Profil Job memberi tiap seksi hue sendiri (sky/violet/emerald/amber/rose). Warna yang sama juga dipakai untuk status (emerald = selesai, amber = peringatan, rose = kritis), sehingga "Job Family" berwarna rose bersaing makna dengan "Critical gap".</p></div></div>
+      <div class="finding"><span class="k">05</span><div><b>Lima radius berbeda di satu layar.</b><p>Tombol/input 12px, dialog 14px, Cell 16px, Card 18px, lencana/chip/bar penuh. <code>rounded-2xl</code> tidak mengikuti <code>--radius</code> sehingga Cell bento justru lebih kecil sudutnya daripada Card biasa.</p></div></div>
+      <div class="finding"><span class="k">06</span><div><b>Lapisan dekoratif bertumpuk di shell.</b><p>Gradien radial + linear + pola grid di latar, blur + bayangan panjang di sidebar dan header, bayangan pada logo dan item aktif, gradien lagi di hero dan dua StatCard. Setiap lapisan wajar sendiri; bersama-sama mereka bersaing dengan konten.</p></div></div>
+      <div class="finding"><span class="k">07</span><div><b>Ukuran huruf arbitrer.</b><p><code>text-[9px]</code>, <code>[10px]</code>, <code>[11px]</code>, <code>[13px]</code> tersebar di 30+ berkas di samping skala Tailwind — tidak ada tipografi yang bisa diubah dari satu tempat.</p></div></div>
+      <div class="finding"><span class="k">08</span><div><b>Token yang ada tetapi tidak dipakai.</b><p><code>--warning</code>, <code>--chart-1..5</code>, <code>--font-serif</code>, kelas <code>.paper-texture</code> dan empat keyframes (<code>graphPulse</code>, <code>signalFlow</code>, <code>radarSweep</code>, <code>signalTravel</code>) hanya dipakai <code>talent-network-map.tsx</code>.</p></div></div>
+      <div class="finding"><span class="k">09</span><div><b>Yang sudah konsisten dan patut dipertahankan.</b><p>Tanggal satu format (<code>lib/datetime.ts</code>, WIB); konfirmasi destruktif selalu AlertDialog; menu satu registry (<code>lib/navigation.ts</code>); CollapsibleCard dengan 4 nada semantik dan ringkasan; lencana cakupan Company di Tata Kelola; status "dimulai" vs "diantrekan" dibedakan amber, bukan merah.</p></div></div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

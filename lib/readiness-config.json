@@ -1,0 +1,29 @@
+{
+  "thresholds": [
+    {
+      "minScore": 80,
+      "level": "Short",
+      "eta": "0 - 1 tahun",
+      "description": "Siap untuk suksesi dalam waktu dekat — sudah memenuhi threshold skor dan persyaratan filter"
+    },
+    {
+      "minScore": 65,
+      "level": "Medium",
+      "eta": "1 - 2 tahun",
+      "description": "Siap dengan pengembangan tambahan — perlu akselerasi di beberapa aspek"
+    },
+    {
+      "minScore": 50,
+      "level": "Long",
+      "eta": "3 - 5 tahun",
+      "description": "Potensi tinggi namun perlu pengembangan intensif sebelum siap suksesi"
+    },
+    {
+      "minScore": 0,
+      "level": "Not Ready",
+      "eta": "> 5 tahun",
+      "description": "Belum memenuhi threshold minimal — perlu intervensi pengembangan signifikan"
+    }
+  ],
+  "defaultLevel": "Not Ready"
+}

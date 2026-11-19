@@ -1,0 +1,24 @@
+{
+  "restructureTemplate": "Jabatan: {{positionName}}\nDivisi/Departemen: {{divisionDepartment}}\nAtasan Langsung: {{directSupervisor}}\nBawahan Langsung: {{subordinates}}\nTujuan Jabatan: {{jobPurpose}}\nKualifikasi Pendidikan: {{education}}\nPengalaman: {{experience}}\nKeahlian: {{skills}}\nKompetensi Teknis: {{technicalCompetencies}}\nKompetensi Perilaku: {{behavioralCompetencies}}\nTanggung jawab dan indikator kesuksesannya: \n{{responsibilities}}\nPosisi dalam struktur organisasi: {{organizationChart}}\n\n",
+  "embedding": {
+    "source": "nomic-local",
+    "model": "nomic-embed-text-v2-moe:latest",
+    "dimensions": 768,
+    "batchSize": 32
+  },
+  "bertopic": {
+    "nNeighbors": 15,
+    "nComponents": 5,
+    "minDist": 0,
+    "metric": "cosine",
+    "minClusterSize": 5,
+    "minSamples": null,
+    "minTopicSize": 5,
+    "nGramMin": 1,
+    "nGramMax": 2,
+    "topNWords": 10,
+    "language": "multilingual",
+    "calculateProbabilities": true,
+    "randomState": 42
+  }
+}

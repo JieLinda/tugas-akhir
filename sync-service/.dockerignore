@@ -1,0 +1,15 @@
+# Local dependencies — the image runs its own `npm install`. Copying the host
+# node_modules over it breaks the build ("cannot replace directory with file")
+# because the local layout differs from the freshly installed one.
+node_modules
+npm-debug.log*
+
+# Build / editor / OS cruft
+dist
+.git
+.gitignore
+.vscode
+.idea
+*.log
+.DS_Store
+Thumbs.db

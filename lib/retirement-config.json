@@ -1,0 +1,11 @@
+{
+  "byLevel": {
+    "STAFF": 50,
+    "SUPERVISOR": 50,
+    "MANAGER": 50,
+    "GENERAL MANAGER": 55,
+    "DIRECTOR": 55,
+    "PRESIDENT DIRECTOR": 55
+  },
+  "defaultMinAge": 55
+}

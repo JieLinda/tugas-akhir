@@ -1,0 +1,14 @@
+# Local dependencies — the image runs its own `pnpm install`. Copying the host
+# node_modules over it breaks the build ("cannot replace directory with file").
+node_modules
+npm-debug.log*
+
+# Build / editor / OS cruft
+dist
+.git
+.gitignore
+.vscode
+.idea
+*.log
+.DS_Store
+Thumbs.db

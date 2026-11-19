@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulse Design System</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* ─────────────────────────────────────────────────────────────
+     TOKEN — inilah yang diusulkan masuk ke app/globals.css.
+     Nama mengikuti shadcn agar bisa disalin apa adanya.
+     ───────────────────────────────────────────────────────────── */
+  :root {
+    /* oranye utama — hue tetap seperti sekarang (≈ #EA580C), dipakai hemat */
+    --orange-50: #fff7ed; --orange-100: #ffedd5; --orange-200: #fed7aa; --orange-300: #fdba74;
+    --orange-400: #fb923c; --orange-500: #f97316; --orange-600: #ea580c; --orange-700: #c2410c; --orange-800: #9a3412; --orange-900: #7c2d12;
+    /* netral hangat (sedikit ke oranye, agar tidak berlawanan dengan primary) */
+    --gray-25: #fcfcfb; --gray-50: #f7f7f5; --gray-100: #efeeeb; --gray-200: #e2e0dc; --gray-300: #cfccc6;
+    --gray-400: #a8a49c; --gray-500: #7d7972; --gray-600: #5c5852; --gray-700: #44413c; --gray-800: #2b2926; --gray-900: #1a1917;
+    /* semantik status — hanya untuk status, bukan dekorasi */
+    --ok-bg: #ecfdf3; --ok-fg: #15803d; --ok-line: #bbf7d0;
+    --warn-bg: #fffbeb; --warn-fg: #a16207; --warn-line: #fde68a;
+    --bad-bg: #fef2f2; --bad-fg: #b91c1c; --bad-line: #fecaca;
+    --info-bg: #f0f6ff; --info-fg: #1d4ed8; --info-line: #bfdbfe;
+
+    /* pemetaan ke nama shadcn yang dipakai app */
+    --background: var(--gray-50);
+    --foreground: var(--gray-900);
+    --card: #ffffff;
+    --muted: var(--gray-100);
+    --muted-foreground: var(--gray-500);
+    --border: var(--gray-200);
+    --input: var(--gray-200);
+    --primary: var(--orange-600);
+    --primary-hover: var(--orange-700);
+    --primary-foreground: #ffffff;
+    --primary-soft: var(--orange-50);
+    --ring: var(--orange-600);
+    --accent: var(--orange-50);              /* sekarang biru — ganti */
+    --accent-foreground: var(--orange-800);   /* sekarang biru — ganti */
+    --sidebar: #ffffff;
+    --sidebar-accent: var(--orange-50);
+    --sidebar-accent-foreground: var(--orange-800);
+    --destructive: var(--bad-fg);
+
+    --radius-sm: 4px;   /* chip, tag */
+    --radius: 6px;      /* kontrol: tombol, input, tab */
+    --radius-lg: 8px;   /* kontainer: kartu, panel, dialog */
+
+    --font-sans: Figtree, "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", Consolas, monospace;
+
+    --shadow-overlay: 0 8px 24px -12px rgba(26, 25, 23, 0.25), 0 2px 6px -2px rgba(26, 25, 23, 0.12);
+  }
+
+  /* ───────────────────────── halaman panduan ───────────────────────── */
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: var(--font-sans); color: var(--foreground); background: #fff; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  a { color: var(--orange-700); text-decoration: none; } a:hover { text-decoration: underline; }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .doc { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100vh; }
+  .toc { position: sticky; top: 0; height: 100vh; overflow: auto; border-right: 1px solid var(--border); padding: 28px 20px 28px 28px; }
+  .toc .t { font-weight: 700; font-size: 15px; letter-spacing: 0.01em; }
+  .toc .t i { display: inline-block; width: 10px; height: 10px; background: var(--orange-600); margin-right: 8px; vertical-align: 1px; }
+  .toc .v { font-size: 12px; color: var(--muted-foreground); margin: 2px 0 22px; }
+  .toc a { display: block; padding: 5px 0; color: var(--gray-600); font-size: 13.5px; }
+  .toc a:hover { color: var(--foreground); text-decoration: none; }
+  .toc h5 { margin: 16px 0 4px; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gray-400); font-weight: 600; }
+
+  .content { padding: 40px 56px 96px; max-width: 1180px; }
+  h1 { margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+  .lead { margin: 12px 0 0; font-size: 16px; color: var(--gray-600); max-width: 760px; }
+  section { margin-top: 64px; }
+  section > h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; letter-spacing: -0.015em; display: flex; align-items: baseline; gap: 12px; }
+  section > h2 .n { font-family: var(--font-mono); font-size: 13px; color: var(--orange-700); font-weight: 500; }
+  section > p.d { margin: 0 0 24px; color: var(--gray-600); max-width: 760px; }
+  h3 { margin: 32px 0 10px; font-size: 15px; font-weight: 600; }
+  h3 + p { margin: -6px 0 12px; color: var(--gray-600); font-size: 13.5px; }
+  .rule { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
+
+  /* contoh (specimen) */
+  .spec { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+  .spec .body { padding: 24px; background: var(--background); }
+  .spec .body.white { background: #fff; }
+  .spec .cap { padding: 10px 16px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--gray-600); background: #fff; display: flex; gap: 14px; }
+  .spec .cap b { color: var(--foreground); font-weight: 600; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  .three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+
+  /* do / don't */
+  .dd { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 14px; }
+  .dd > div { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; font-size: 13.5px; }
+  .dd h6 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700; }
+  .dd .yes h6 { color: var(--ok-fg); } .dd .no h6 { color: var(--bad-fg); }
+  .dd ul { margin: 0; padding-left: 18px; color: var(--gray-700); } .dd li { margin: 3px 0; }
+
+  /* ── warna ── */
+  .swatches { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
+  .sw { height: 64px; border-radius: var(--radius); display: flex; flex-direction: column; justify-content: flex-end; padding: 6px 8px; font-size: 10.5px; line-height: 1.3; border: 1px solid rgba(0,0,0,0.06); }
+  .sw b { font-weight: 600; display: block; }
+  .roles { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .roles th { text-align: left; font-weight: 600; font-size: 11.5px; color: var(--gray-500); padding: 8px 10px; border-bottom: 1px solid var(--foreground); text-transform: uppercase; letter-spacing: 0.06em; }
+  .roles td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .roles td:first-child { font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
+  .dot { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 8px; border: 1px solid rgba(0,0,0,0.08); }
+
+  /* ── tipografi ── */
+  .type div { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 20px; padding: 12px 0; border-bottom: 1px solid var(--border); align-items: baseline; }
+  .type .k { font-family: var(--font-mono); font-size: 12px; color: var(--gray-500); }
+
+  /* ── spasi ── */
+  .scale { display: flex; align-items: flex-end; gap: 14px; }
+  .scale div { background: var(--orange-100); border: 1px solid var(--orange-300); display: flex; align-items: flex-end; justify-content: center; font-family: var(--font-mono); font-size: 11px; color: var(--orange-800); }
+
+  /* ═══════════════════════════ KOMPONEN ═══════════════════════════ */
+  .btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: var(--radius); font: inherit; font-size: 13.5px; font-weight: 600; border: 1px solid transparent; cursor: pointer; white-space: nowrap; }
+  .btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+  .btn.primary { background: var(--primary); color: #fff; }
+  .btn.primary:hover { background: var(--primary-hover); }
+  .btn.secondary { background: #fff; color: var(--foreground); border-color: var(--gray-300); }
+  .btn.secondary:hover { background: var(--gray-50); }
+  .btn.ghost { background: transparent; color: var(--gray-700); }
+  .btn.ghost:hover { background: var(--gray-100); }
+  .btn.danger { background: #fff; color: var(--bad-fg); border-color: var(--bad-line); }
+  .btn.danger:hover { background: var(--bad-bg); }
+  .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+  .btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+  .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+  .field label { font-weight: 500; color: var(--gray-700); }
+  .field .hint { font-size: 12px; color: var(--muted-foreground); }
+  .input { height: 36px; border: 1px solid var(--input); border-radius: var(--radius); padding: 0 10px; font: inherit; font-size: 13.5px; background: #fff; color: var(--foreground); width: 100%; }
+  .input:focus { outline: 2px solid var(--ring); outline-offset: 1px; border-color: var(--ring); }
+  .input.err { border-color: var(--bad-fg); }
+  .field .msg { font-size: 12px; color: var(--bad-fg); }
+  .select { position: relative; }
+  .select::after { content: ""; position: absolute; right: 12px; top: 14px; width: 6px; height: 6px; border-right: 1.5px solid var(--gray-600); border-bottom: 1.5px solid var(--gray-600); transform: rotate(45deg); }
+  .search { position: relative; }
+  .search svg { position: absolute; left: 10px; top: 10px; width: 16px; height: 16px; stroke: var(--gray-400); fill: none; stroke-width: 1.8; }
+  .search .input { padding-left: 32px; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+  .tabs a { padding: 10px 12px; font-size: 13.5px; font-weight: 500; color: var(--gray-600); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tabs a:hover { color: var(--foreground); text-decoration: none; }
+  .tabs a.on { color: var(--foreground); font-weight: 600; border-bottom-color: var(--orange-600); }
+  .tabs a .c { color: var(--gray-400); margin-left: 6px; font-weight: 400; }
+  .seg { display: inline-flex; border: 1px solid var(--gray-300); border-radius: var(--radius); overflow: hidden; }
+  .seg a { padding: 6px 12px; font-size: 13px; color: var(--gray-700); border-right: 1px solid var(--gray-300); }
+  .seg a:last-child { border-right: 0; }
+  .seg a.on { background: var(--gray-900); color: #fff; font-weight: 600; }
+  .seg a:hover { text-decoration: none; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+  .card .ch { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .card .ch h4 { margin: 0; font-size: 14px; font-weight: 600; }
+  .card .ch p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
+  .card .cb { padding: 18px; }
+  .card.band .ch { background: var(--gray-50); border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+  .card.band.primary .ch { background: var(--orange-50); }
+  .card.band.caution .ch { background: var(--warn-bg); }
+  .card.band.danger .ch { background: var(--bad-bg); }
+
+  .pagehead { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .pagehead h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.015em; }
+  .pagehead p { margin: 4px 0 0; color: var(--gray-600); font-size: 13.5px; max-width: 640px; }
+  .crumb { font-size: 12.5px; color: var(--gray-500); margin-bottom: 8px; }
+  .crumb b { color: var(--foreground); font-weight: 500; }
+  .sechead { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 10px; }
+  .sechead h4 { margin: 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-700); }
+  .sechead a { font-size: 13px; font-weight: 500; }
+
+  table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; background: #fff; }
+  table.data th { text-align: left; font-weight: 600; font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--gray-500); padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--gray-25); white-space: nowrap; }
+  table.data td { padding: 10px 14px; border-bottom: 1px solid var(--gray-100); vertical-align: top; }
+  table.data tr:last-child td { border-bottom: 0; }
+  table.data th.r, table.data td.r { text-align: right; }
+  table.data td .m { display: block; font-size: 12px; color: var(--muted-foreground); margin-top: 1px; }
+  table.data td .m.o { color: var(--orange-700); }
+  table.data tr:hover td { background: var(--gray-25); }
+  table.data tr.sel td { background: var(--orange-50); }
+  table.data td .act { color: var(--orange-700); font-weight: 600; }
+
+  .tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; border: 1px solid; }
+  .tag.ok { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-line); }
+  .tag.warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
+  .tag.bad { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-line); }
+  .tag.info { background: var(--info-bg); color: var(--info-fg); border-color: var(--info-line); }
+  .tag.neutral { background: var(--gray-100); color: var(--gray-700); border-color: var(--gray-200); }
+  .tag.act { background: var(--orange-50); color: var(--orange-800); border-color: var(--orange-200); }
+
+  .strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 1px solid var(--foreground); border-bottom: 1px solid var(--border); background: #fff; }
+  .strip div { padding: 12px 16px; border-right: 1px solid var(--border); }
+  .strip div:last-child { border-right: 0; }
+  .strip .l { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gray-500); font-weight: 600; }
+  .strip .v { font-size: 24px; font-weight: 600; margin-top: 4px; letter-spacing: -0.01em; }
+  .strip .v small { font-size: 12px; color: var(--gray-500); font-weight: 400; margin-left: 6px; letter-spacing: 0; }
+  .strip .v.o { color: var(--orange-700); }
+
+  .notice { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; padding: 12px 14px; border-radius: var(--radius); border: 1px solid; font-size: 13px; align-items: start; }
+  .notice svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+  .notice b { display: block; font-weight: 600; }
+  .notice.info { background: var(--info-bg); border-color: var(--info-line); color: #1e3a8a; }
+  .notice.warn { background: var(--warn-bg); border-color: var(--warn-line); color: #713f12; }
+  .notice.bad { background: var(--bad-bg); border-color: var(--bad-line); color: #7f1d1d; }
+  .notice.ok { background: var(--ok-bg); border-color: var(--ok-line); color: #14532d; }
+
+  .empty { border: 1px dashed var(--gray-300); border-radius: var(--radius-lg); padding: 36px 24px; text-align: center; background: #fff; }
+  .empty h5 { margin: 0; font-size: 14px; font-weight: 600; }
+  .empty p { margin: 6px auto 14px; font-size: 13px; color: var(--gray-600); max-width: 420px; }
+
+  .collapse { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); }
+  .collapse .hd { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; }
+  .collapse .hd h4 { margin: 0; font-size: 14px; font-weight: 600; flex: 1; }
+  .collapse .hd .sum { font-size: 12.5px; color: var(--muted-foreground); }
+  .collapse .hd .chev { width: 16px; height: 16px; stroke: var(--gray-500); fill: none; stroke-width: 1.8; }
+  .collapse .bd { border-top: 1px solid var(--border); padding: 16px; font-size: 13px; color: var(--gray-600); }
+
+  .dialog { width: 440px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); padding: 20px 22px; }
+  .dialog h4 { margin: 0; font-size: 16px; font-weight: 600; }
+  .dialog p { margin: 8px 0 0; font-size: 13.5px; color: var(--gray-600); }
+  .dialog .ft { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+  .toast { display: inline-grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; align-items: start; background: var(--gray-900); color: #fff; padding: 12px 14px; border-radius: var(--radius); font-size: 13px; box-shadow: var(--shadow-overlay); max-width: 380px; }
+  .toast svg { width: 18px; height: 18px; stroke: var(--orange-400); fill: none; stroke-width: 1.8; }
+  .toast small { display: block; color: #b3b3b3; margin-top: 2px; }
+
+  .skel { height: 12px; background: linear-gradient(90deg, var(--gray-100), var(--gray-200), var(--gray-100)); border-radius: 3px; }
+
+  /* ── shell ── */
+  .shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); height: 540px; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--background); font-size: 12.5px; }
+  .shell .sb { background: #fff; border-right: 1px solid var(--border); padding: 14px 10px; display: flex; flex-direction: column; }
+  .shell .brand { display: flex; align-items: center; gap: 8px; padding: 2px 8px 12px; font-weight: 700; font-size: 13px; }
+  .shell .brand i { width: 22px; height: 22px; background: var(--orange-600); border-radius: 5px; display: inline-block; }
+  .shell .cta { display: flex; flex-direction: column; gap: 6px; padding: 0 4px 10px; }
+  .shell .cta span { text-align: center; padding: 7px; border-radius: var(--radius); font-weight: 600; font-size: 12px; }
+  .shell .cta .p { background: var(--orange-600); color: #fff; } .shell .cta .s { border: 1px solid var(--gray-300); }
+  .shell .g { padding: 10px 8px 4px; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gray-400); font-weight: 600; }
+  .shell .it { padding: 6px 8px; border-radius: var(--radius); color: var(--gray-700); }
+  .shell .it.on { background: var(--orange-50); color: var(--orange-800); font-weight: 600; }
+  .shell .tn { margin-top: auto; padding: 8px; border-top: 1px solid var(--border); color: var(--gray-500); display: flex; justify-content: space-between; }
+  .shell .tn b { color: var(--foreground); }
+  .shell .mn { display: flex; flex-direction: column; min-width: 0; }
+  .shell .hd2 { background: #fff; border-bottom: 1px solid var(--border); padding: 14px 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .shell .hd2 h5 { margin: 0; font-size: 16px; font-weight: 600; }
+  .shell .hd2 p { margin: 2px 0 0; color: var(--gray-500); }
+  .shell .ct { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .shell .blk { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg); height: 88px; }
+  .shell .blk.short { height: 56px; }
+
+  /* wireframes pola */
+  .wf { border: 1px solid var(--border); border-radius: var(--radius-lg); background: #fff; padding: 12px; height: 220px; display: flex; flex-direction: column; gap: 8px; font-size: 11px; color: var(--gray-500); }
+  .wf .b { background: var(--gray-100); border-radius: 3px; }
+  .wf .o { background: var(--orange-100); }
+  .wf .hrow { display: flex; gap: 8px; align-items: center; }
+  .wf .hrow .b { height: 14px; }
+  .pat h4 { margin: 10px 0 2px; font-size: 14px; font-weight: 600; }
+  .pat p { margin: 0; font-size: 13px; color: var(--gray-600); }
+
+  .mig { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .mig th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gray-500); padding: 8px 10px; border-bottom: 1px solid var(--foreground); }
+  .mig td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .mig code { font-family: var(--font-mono); font-size: 12px; background: var(--gray-100); padding: 1px 5px; border-radius: 3px; }
+  @media (max-width: 1000px) { .doc { grid-template-columns: 1fr; } .toc { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); } .content { padding: 24px 20px 64px; } .two, .three, .dd { grid-template-columns: 1fr; } .swatches { grid-template-columns: repeat(5, minmax(0, 1fr)); } .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+</head>
+<body>
+<div class="doc">
+  <nav class="toc">
+    <div class="t"><i></i>Pulse</div>
+    <div class="v">Design system · v0.1 · Sep 2026</div>
+    <h5>Dasar</h5>
+    <a href="#prinsip">Prinsip</a><a href="#warna">Warna</a><a href="#tipografi">Tipografi</a><a href="#spasi">Spasi &amp; bentuk</a><a href="#shell">Shell layout</a>
+    <h5>Komponen</h5>
+    <a href="#tombol">Tombol</a><a href="#form">Form &amp; input</a><a href="#nav">Tab &amp; segmen</a><a href="#header">Header halaman &amp; seksi</a><a href="#kartu">Kartu &amp; panel lipat</a><a href="#tabel">Tabel</a><a href="#status">Status &amp; angka</a><a href="#pesan">Pesan, dialog, kosong</a>
+    <h5>Pola</h5>
+    <a href="#pola">Lima pola halaman</a><a href="#tulisan">Nada tulisan</a><a href="#migrasi">Migrasi dari kode sekarang</a>
+  </nav>
+
+  <main class="content">
+    <h1>Pulse Design System</h1>
+    <p class="lead">Satu bahasa visual untuk seluruh app — Beranda, Manajemen Posisi, Kandidat, Profil Job, Tata Kelola, Sinkronisasi. Oranye tetap warna utama; yang berubah adalah <em>bagaimana</em> ia dipakai: untuk tindakan dan posisi aktif saja, di atas netral hangat yang tenang, dengan garis tipis sebagai pembatas dan huruf yang membawa hierarki. Semua contoh di halaman ini dirender dengan token yang sama yang diusulkan masuk ke <span class="mono">globals.css</span>.</p>
+
+    <!-- ═════════ PRINSIP ═════════ -->
+    <section id="prinsip">
+      <h2><span class="n">01</span>Prinsip</h2>
+      <p class="d">Enam aturan yang menyelesaikan sebagian besar keputusan desain tanpa perlu berdiskusi ulang.</p>
+      <div class="three">
+        <div class="card"><div class="cb"><h4 style="margin: 0 0 6px; font-size: 14px;">Oranye = tindakan</h4><p style="margin: 0; font-size: 13px; color: var(--gray-600);">Tombol utama, item menu aktif, tautan, dan teks untuk hal yang menuntut tindakan. Maksimal tiga kemunculan per layar. Tidak pernah untuk latar dekoratif, glow, atau ikon hias.</p></div></div>
+        <div class="card"><div class="cb"><h4 style="margin: 0 0 6px; font-size: 14px;">Netral menahan halaman</h4><p style="margin: 0; font-size: 13px; color: var(--gray-600);">Latar abu hangat, kartu putih, garis 1px. Tidak ada gradien radial, tidak ada pola grid di latar, tidak ada bayangan pada kartu — bayangan hanya untuk lapisan yang melayang (dialog, popover, toast).</p></div></div>
+        <div class="card"><div class="cb"><h4 style="margin: 0 0 6px; font-size: 14px;">Status berwarna, hiasan tidak</h4><p style="margin: 0; font-size: 13px; color: var(--gray-600);">Hijau, kuning, merah, biru hanya untuk status yang benar-benar berbeda maknanya. Readiness ditulis sebagai kata. Oranye bukan status — agar tidak bersaing dengan tindakan.</p></div></div>
+        <div class="card"><div class="cb"><h4 style="margin: 0 0 6px; font-size: 14px;">Angka rata kanan, tabular</h4><p style="margin: 0; font-size: 13px; color: var(--gray-600);">Setiap angka dalam tabel rata kanan dengan <span class="mono">tabular-nums</span>. Tanggal <span class="mono">YYYY-MM-DD</span> (aturan app). Angka besar selalu didampingi penjelasan apa artinya.</p></div></div>
+        <div class="card"><div class="cb"><h4 style="margin: 0 0 6px; font-size: 14px;">Kata sebelum ikon</h4><p style="margin: 0; font-size: 13px; color: var(--gray-600);">Label teks selalu ada. Ikon hanya menemani kata, ukuran 16px, satu gaya garis (Lucide). Tidak ada ikon dalam lingkaran berwarna.</p></div></div>
+        <div class="card"><div class="cb"><h4 style="margin: 0 0 6px; font-size: 14px;">Satu tindakan utama per layar</h4><p style="margin: 0; font-size: 13px; color: var(--gray-600);">Hanya satu tombol oranye yang terlihat pada satu waktu. Tindakan lain memakai tombol sekunder atau tautan. Tindakan merusak selalu lewat dialog konfirmasi.</p></div></div>
+      </div>
+    </section>
+
+    <!-- ═════════ WARNA ═════════ -->
+    <section id="warna">
+      <h2><span class="n">02</span>Warna</h2>
+      <p class="d">Tiga keluarga: oranye (tindakan), netral hangat (struktur), semantik (status). Hue oranye tidak diubah dari app sekarang (<span class="mono">--primary ≈ #EA580C</span>); yang berubah adalah <span class="mono">--accent</span> dan <span class="mono">--sidebar-accent</span> yang sekarang biru — dua warna aksen dalam satu app adalah sumber kesan "ramai".</p>
+
+      <h3>Oranye</h3>
+      <div class="swatches">
+        <div class="sw" style="background: var(--orange-50);"><b>50</b>latar aktif</div><div class="sw" style="background: var(--orange-100);"><b>100</b>tag tindakan</div><div class="sw" style="background: var(--orange-200);"><b>200</b>garis tag</div><div class="sw" style="background: var(--orange-300);"><b>300</b></div><div class="sw" style="background: var(--orange-400);"><b>400</b>ikon di gelap</div><div class="sw" style="background: var(--orange-500); color: #fff;"><b>500</b></div><div class="sw" style="background: var(--orange-600); color: #fff;"><b>600</b>primary</div><div class="sw" style="background: var(--orange-700); color: #fff;"><b>700</b>hover · teks</div><div class="sw" style="background: var(--orange-800); color: #fff;"><b>800</b>teks di 50</div><div class="sw" style="background: var(--orange-900); color: #fff;"><b>900</b></div>
+      </div>
+      <h3>Netral hangat</h3>
+      <p>Sedikit condong ke kuning-oranye supaya selaras dengan primary; abu biru yang sekarang dipakai membuat oranye terlihat "asing" di halaman.</p>
+      <div class="swatches">
+        <div class="sw" style="background: var(--gray-25);"><b>25</b>latar th tabel</div><div class="sw" style="background: var(--gray-50);"><b>50</b>background</div><div class="sw" style="background: var(--gray-100);"><b>100</b>muted</div><div class="sw" style="background: var(--gray-200);"><b>200</b>border</div><div class="sw" style="background: var(--gray-300);"><b>300</b>garis tombol</div><div class="sw" style="background: var(--gray-400); color: #fff;"><b>400</b>ikon pasif</div><div class="sw" style="background: var(--gray-500); color: #fff;"><b>500</b>teks muted</div><div class="sw" style="background: var(--gray-600); color: #fff;"><b>600</b>teks sekunder</div><div class="sw" style="background: var(--gray-800); color: #fff;"><b>800</b></div><div class="sw" style="background: var(--gray-900); color: #fff;"><b>900</b>teks utama</div>
+      </div>
+      <h3>Peran warna</h3>
+      <table class="roles">
+        <thead><tr><th>Token</th><th>Nilai</th><th>Dipakai untuk</th><th>Tidak untuk</th></tr></thead>
+        <tbody>
+          <tr><td>--primary</td><td><span class="dot" style="background: var(--orange-600);"></span>orange-600</td><td>Tombol utama, penanda aktif (garis bawah tab, latar item menu aktif memakai orange-50), fokus ring</td><td>Latar kartu, ikon hias, angka statistik biasa</td></tr>
+          <tr><td>--accent</td><td><span class="dot" style="background: var(--orange-50);"></span>orange-50 / 800</td><td>Hover &amp; item aktif di menu dan daftar</td><td>Sekarang biru (oklch 0.91 0.02 244) — ganti</td></tr>
+          <tr><td>ok / warn / bad / info</td><td><span class="dot" style="background: var(--ok-bg); border-color: var(--ok-line);"></span><span class="dot" style="background: var(--warn-bg); border-color: var(--warn-line);"></span><span class="dot" style="background: var(--bad-bg); border-color: var(--bad-line);"></span><span class="dot" style="background: var(--info-bg); border-color: var(--info-line);"></span></td><td>Berhasil / perlu perhatian / gagal atau berbahaya / informasi. Tag, notice, ikon status</td><td>Membedakan kategori yang setara (mis. lima seksi menu — itu bukan status)</td></tr>
+          <tr><td>--background</td><td><span class="dot" style="background: var(--gray-50);"></span>gray-50</td><td>Latar area konten, polos</td><td>Gradien radial oranye + pola grid seperti di <span class="mono">app/(dashboard)/layout.tsx</span> sekarang</td></tr>
+          <tr><td>--card</td><td><span class="dot" style="background: #fff;"></span>#FFFFFF</td><td>Kartu, panel, header halaman, sidebar</td><td>Bayangan; cukup garis --border</td></tr>
+        </tbody>
+      </table>
+      <div class="dd">
+        <div class="yes"><h6>Lakukan</h6><ul><li>Satu tombol oranye per layar; lainnya sekunder.</li><li>Teks oranye (700) untuk "belum ada suksesor", "belum di-scoring" — hal yang menunggu tindakan.</li><li>Readiness Short/Medium/Long sebagai teks; hanya "Not Ready" dan kegagalan yang memakai warna status.</li></ul></div>
+        <div class="no"><h6>Hindari</h6><ul><li>Lima warna aksen berbeda untuk lima seksi menu.</li><li>Heat grid oranye 16 sel di Beranda — pindahkan ke halaman analisis.</li><li>Ikon dalam lingkaran berwarna di kartu statistik.</li></ul></div>
+      </div>
+    </section>
+
+    <!-- ═════════ TIPOGRAFI ═════════ -->
+    <section id="tipografi">
+      <h2><span class="n">03</span>Tipografi</h2>
+      <p class="d">Figtree tetap (sudah dimuat di <span class="mono">app/layout.tsx</span>); JetBrains Mono untuk kode dan ID. Tidak ada serif. Hierarki dibawa oleh ukuran dan bobot, bukan warna. Tiga bobot saja: 400, 500, 600 — 700 hanya untuk merek.</p>
+      <div class="type">
+        <div><span class="k">display · 30/36 · 600 · -0.02em</span><span style="font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2;">6 posisi perlu pergantian dalam 12 bulan</span></div>
+        <div><span class="k">h1 halaman · 22/28 · 600 · -0.015em</span><span style="font-size: 22px; font-weight: 600; letter-spacing: -0.015em;">Manajemen Posisi</span></div>
+        <div><span class="k">h2 seksi · 15/22 · 600</span><span style="font-size: 15px; font-weight: 600;">Aturan Filter Kelayakan</span></div>
+        <div><span class="k">label seksi · 13/18 · 600 · uppercase 0.08em</span><span style="font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-700);">Posisi yang menunggu keputusan</span></div>
+        <div><span class="k">body · 14/21 · 400</span><span>Dari 42 posisi terdaftar, 28 sudah dinilai dan 19 sudah punya suksesor terpilih.</span></div>
+        <div><span class="k">body kecil · 13/19 · 400</span><span style="font-size: 13px;">Teks tabel, deskripsi kartu, formulir.</span></div>
+        <div><span class="k">caption · 12/16 · 400 · muted</span><span style="font-size: 12px; color: var(--muted-foreground);">Data disinkronkan Senin 16 Sep, 01:00</span></div>
+        <div><span class="k">kolom tabel · 11.5 · 600 · uppercase 0.04em</span><span style="font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray-500);">Readiness #1</span></div>
+        <div><span class="k">angka · tabular</span><span class="num" style="font-size: 24px; font-weight: 600;">1.284 &nbsp; 42 &nbsp; 2026-09-16</span></div>
+        <div><span class="k">mono · 12.5</span><span class="mono" style="font-size: 12.5px;">JD-FIN-004 · MPM2 · pulse_tenant</span></div>
+      </div>
+      <div class="dd">
+        <div class="yes"><h6>Lakukan</h6><ul><li>Judul halaman 22px, satu per halaman, tanpa overline "PULSE COMMAND CENTER".</li><li>Deskripsi halaman satu kalimat, maksimal ±90 karakter.</li></ul></div>
+        <div class="no"><h6>Hindari</h6><ul><li>Teks 10px/10.5px — batas bawah 11px (label kolom), 12px untuk kalimat.</li><li>Uppercase pada kalimat panjang; hanya untuk label pendek.</li></ul></div>
+      </div>
+    </section>
+
+    <!-- ═════════ SPASI & BENTUK ═════════ -->
+    <section id="spasi">
+      <h2><span class="n">04</span>Spasi &amp; bentuk</h2>
+      <p class="d">Basis 4px. Sudut lebih kecil dari sekarang (<span class="mono">--radius</span> 12px → 6px kontrol / 8px kontainer): sudut besar pada elemen kecil adalah salah satu sumber kesan "mainan".</p>
+      <div class="scale">
+        <div style="width: 4px; height: 4px;"></div><div style="width: 8px; height: 8px;"></div><div style="width: 12px; height: 12px;">&nbsp;</div><div style="width: 16px; height: 16px;">16</div><div style="width: 24px; height: 24px;">24</div><div style="width: 32px; height: 32px;">32</div><div style="width: 48px; height: 48px;">48</div><div style="width: 64px; height: 64px;">64</div>
+      </div>
+      <table class="roles" style="margin-top: 20px;">
+        <thead><tr><th>Ukuran</th><th>Nilai</th><th>Pemakaian</th></tr></thead>
+        <tbody>
+          <tr><td>padding konten</td><td>24px</td><td>Area halaman di bawah header (sekarang p-6 — tetap)</td></tr>
+          <tr><td>jarak antar seksi</td><td>24px</td><td>Antar kartu/panel dalam satu halaman</td></tr>
+          <tr><td>padding kartu</td><td>18px · header 14/18</td><td>Semua kartu; tidak ada kartu dengan padding 24+</td></tr>
+          <tr><td>tinggi kontrol</td><td>36px · kecil 32px</td><td>Tombol, input, select, trigger tab pil</td></tr>
+          <tr><td>tinggi baris tabel</td><td>40px (padding 10/14)</td><td>Baris dua-baris (judul + meta) boleh 52px</td></tr>
+          <tr><td>radius</td><td>4 / 6 / 8</td><td>tag · kontrol · kontainer. Dialog 8. Tidak ada 12+ kecuali avatar bulat</td></tr>
+          <tr><td>garis</td><td>1px --border</td><td>Pembatas kartu, tabel, header. Tidak ada garis 4px berwarna di kiri kartu</td></tr>
+          <tr><td>bayangan</td><td>--shadow-overlay</td><td>Hanya dialog, popover, dropdown, toast</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ═════════ SHELL ═════════ -->
+    <section id="shell">
+      <h2><span class="n">05</span>Shell layout</h2>
+      <p class="d">Struktur sekarang dipertahankan (sidebar 240px, header, konten) — registry menu di <span class="mono">lib/navigation.ts</span> tidak berubah. Yang dibersihkan: sidebar jadi putih bersih dengan item aktif berlatar oranye-50, header tanpa overline dan tanpa bayangan, latar konten polos.</p>
+      <div class="shell">
+        <aside class="sb">
+          <div class="brand"><i></i>PULSE</div>
+          <div class="cta"><span class="p">Mulai Scoring</span><span class="s">Talent Pool</span></div>
+          <div class="g">Alur kerja</div><div class="it on">Beranda</div><div class="it">Mesin Penilaian</div>
+          <div class="g">Data referensi</div><div class="it">Kandidat</div><div class="it">Profil Job</div>
+          <div class="g">Administrasi</div><div class="it">Tata Kelola</div><div class="it">Sinkronisasi</div><div class="it">Pengguna &amp; Akses</div><div class="it">Keamanan</div>
+          <div class="tn"><span>Company</span><b>Mulia</b></div>
+        </aside>
+        <div class="mn">
+          <div class="hd2"><div><h5>Beranda</h5><p>Ringkasan suksesi Company Mulia · data sinkron Senin 01:00</p></div><span class="seg" style="font-size: 11px;"><a class="on" href="#">Critical Position</a><a href="#">Emergency</a></span></div>
+          <div class="ct"><div class="blk short"></div><div class="blk"></div><div class="blk"></div></div>
+        </div>
+      </div>
+      <div class="dd">
+        <div class="yes"><h6>Lakukan</h6><ul><li>Sidebar: latar putih, garis kanan 1px, item aktif orange-50 + teks orange-800, tanpa bayangan pada item.</li><li>Header: judul 22px + satu kalimat deskripsi + slot aksi di kanan. Tinggi mengikuti isi, latar putih, garis bawah 1px.</li><li>Pemilih Company dan menu pengguna di sidebar bawah, bukan di header.</li></ul></div>
+        <div class="no"><h6>Hindari</h6><ul><li>Overline "PULSE COMMAND CENTER" di setiap halaman — merek cukup sekali di sidebar.</li><li>Latar gradien radial oranye + pola grid 40px di belakang konten.</li><li>Bayangan panjang di logo dan item menu aktif (<span class="mono">shadow-[0_12px_24px…]</span>).</li></ul></div>
+      </div>
+    </section>
+
+    <!-- ═════════ TOMBOL ═════════ -->
+    <section id="tombol">
+      <h2><span class="n">06</span>Tombol</h2>
+      <p class="d">Empat varian, dua ukuran. Ikon opsional di kiri, 15px. Label kata kerja: "Simpan program", "Jalankan pencocokan", bukan "OK" atau "Submit".</p>
+      <div class="spec"><div class="body white">
+        <div class="row">
+          <button class="btn primary">Mulai Scoring</button>
+          <button class="btn secondary">Tambah posisi</button>
+          <button class="btn ghost">Batalkan</button>
+          <button class="btn danger">Hapus program</button>
+          <button class="btn primary" disabled>Simpan program</button>
+          <button class="btn secondary sm"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg>Muat ulang</button>
+          <button class="btn primary sm">Jalankan Pencocokan</button>
+        </div>
+      </div><div class="cap"><b>primary</b> satu per layar · <b>secondary</b> tindakan setara · <b>ghost</b> batal/tutup · <b>danger</b> merusak, selalu lewat dialog · disabled 45% dan beri alasan lewat tooltip atau teks</div></div>
+    </section>
+
+    <!-- ═════════ FORM ═════════ -->
+    <section id="form">
+      <h2><span class="n">07</span>Form &amp; input</h2>
+      <p class="d">Label di atas, petunjuk di bawah, kesalahan dalam kalimat. Tinggi 36px, radius 6px, fokus ring oranye 2px.</p>
+      <div class="spec"><div class="body white">
+        <div class="three">
+          <div class="field"><label>Nama program</label><input class="input" value="Critical Position"><span class="hint">Tampil di pemilih program saat memulai scoring.</span></div>
+          <div class="field"><label>Target finalis</label><div class="select"><input class="input" value="10"></div><span class="hint">1–50. Batas daftar finalis, bukan jumlah yang dinilai.</span></div>
+          <div class="field"><label>Cari</label><div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input class="input" placeholder="Cari posisi, pejabat, departemen…"></div></div>
+          <div class="field"><label>Kode program</label><input class="input err" value="critical position"><span class="msg">Kode hanya huruf kecil, angka, dan garis bawah — contoh <span class="mono">critical_position</span>.</span></div>
+          <div class="field"><label>Company</label><div class="select"><input class="input" value="Mulia"></div></div>
+          <div class="field"><label>Catatan MCU</label><textarea class="input" style="height: 72px; padding: 8px 10px; resize: vertical;">Tekanan darah — kontrol rutin.</textarea><span class="hint">Disimpan terpisah dari data sinkron; tidak ditimpa cron Senin.</span></div>
+        </div>
+      </div><div class="cap">Pesan kesalahan menyebut apa yang salah <b>dan</b> contoh yang benar · placeholder bukan pengganti label · field wajib tidak ditandai bintang — yang opsional yang ditandai "(opsional)"</div></div>
+    </section>
+
+    <!-- ═════════ NAV ═════════ -->
+    <section id="nav">
+      <h2><span class="n">08</span>Tab &amp; segmen</h2>
+      <p class="d">Dua kontrol yang sekarang tercampur di banyak halaman. <b>Tab garis</b> untuk berpindah konten dalam satu halaman (seksi Profil Job, tab detail posisi). <b>Segmen</b> untuk memfilter data yang sama (program, cakupan). Keduanya menampilkan jumlah bila datanya berhitung.</p>
+      <div class="spec"><div class="body white">
+        <div class="tabs"><a class="on" href="#">Dokumen<span class="c num">275</span></a><a href="#">Struktur Posisi</a><a href="#">Job Profile Match</a><a href="#">Kamus Kompetensi<span class="c num">90</span></a><a href="#">Job Family</a></div>
+        <div class="row" style="margin-top: 22px;">
+          <span class="seg"><a class="on" href="#">Critical Position <span class="num">31</span></a><a href="#">Emergency <span class="num">11</span></a><a href="#">Semua</a></span>
+          <span class="seg"><a class="on" href="#">Semua</a><a href="#">Perlu pergantian <span class="num">6</span></a><a href="#">Belum ada suksesor <span class="num">9</span></a><a href="#">Belum di-scoring <span class="num">14</span></a></span>
+        </div>
+      </div><div class="cap">Tab garis: garis bawah 2px oranye, teks aktif 600 · Segmen: aktif hitam pekat, bukan oranye — supaya tombol utama tetap satu-satunya yang oranye</div></div>
+    </section>
+
+    <!-- ═════════ HEADER ═════════ -->
+    <section id="header">
+      <h2><span class="n">09</span>Header halaman &amp; seksi</h2>
+      <p class="d">Header halaman: remah roti (bila bertingkat), judul, satu kalimat konteks yang menyebut angka penting, aksi di kanan. Header seksi: label uppercase kecil + tautan "lihat semua".</p>
+      <div class="spec"><div class="body white">
+        <div class="crumb">Profil Job / <b>Job Family</b></div>
+        <div class="pagehead">
+          <div><h2>Manajemen Posisi</h2><p>42 posisi terdaftar · 28 sudah di-scoring · 6 perlu pergantian dalam 12 bulan.</p></div>
+          <div class="row"><button class="btn secondary">Tambah massal</button><button class="btn primary">Tambah posisi</button></div>
+        </div>
+        <div class="sechead" style="margin-top: 24px;"><h4>Posisi yang menunggu keputusan</h4><a href="#">Semua 42 posisi →</a></div>
+        <div class="skel" style="width: 100%;"></div><div class="skel" style="width: 92%; margin-top: 8px;"></div><div class="skel" style="width: 96%; margin-top: 8px;"></div>
+      </div><div class="cap">Deskripsi header menyebut angka yang berubah, bukan menjelaskan fitur ("Kelola program scoring, aturan filter…") · aksi utama paling kanan</div></div>
+    </section>
+
+    <!-- ═════════ KARTU ═════════ -->
+    <section id="kartu">
+      <h2><span class="n">10</span>Kartu &amp; panel lipat</h2>
+      <p class="d">Kartu polos adalah bawaan. Varian <b>band</b> memberi header latar tipis untuk halaman berkartu banyak (Sinkronisasi, Tata Kelola) dalam empat nada bermakna. Panel lipat selalu membawa ringkasan satu baris di judulnya.</p>
+      <div class="spec"><div class="body">
+        <div class="two">
+          <div class="card"><div class="ch"><div><h4>Readiness Bands</h4><p>Ambang skor akhir yang menentukan Short / Medium / Long.</p></div><button class="btn ghost sm">Ubah</button></div><div class="cb" style="font-size: 13px; color: var(--gray-600);">Isi kartu.</div></div>
+          <div class="card band primary"><div class="ch"><div><h4>Unggah Berkas Sumber</h4><p>Satu-satunya jalur masuk job profile, kamus, HAV, MCU.</p></div></div><div class="cb" style="font-size: 13px; color: var(--gray-600);">Band <b>primary</b> — yang dikunjungi untuk bertindak.</div></div>
+          <div class="card band"><div class="ch"><div><h4>Riwayat Sinkronisasi</h4><p>Setiap eksekusi dicatat, termasuk yang gagal.</p></div></div><div class="cb" style="font-size: 13px; color: var(--gray-600);">Band <b>neutral</b> — informasi baca-saja.</div></div>
+          <div class="card band danger"><div class="ch"><div><h4>Data Kandidat</h4><p>Pengosongan massal pool kandidat Company aktif.</p></div></div><div class="cb" style="font-size: 13px; color: var(--gray-600);">Band <b>danger</b> — kartu dengan tindakan merusak. <b>caution</b> (kuning) untuk pengaturan sumber data.</div></div>
+        </div>
+        <div class="collapse" style="margin-top: 20px;">
+          <div class="hd"><svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><h4>Pemetaan Company ID → Company</h4><span class="sum num">3 aktif · 1 nonaktif</span><button class="btn secondary sm">Tambah mapping</button></div>
+        </div>
+        <div class="collapse" style="margin-top: 8px;">
+          <div class="hd"><svg class="chev" viewBox="0 0 24 24" style="transform: rotate(180deg);"><path d="m6 9 6 6 6-6"/></svg><h4>Riwayat Sinkronisasi</h4><span class="sum"><span class="tag ok" style="height: 20px; font-size: 11px;">Berhasil</span> &nbsp;Kandidat · 2 jam lalu · <span class="num">1.284</span> eksekusi</span></div>
+          <div class="bd">Isi panel terbuka. Pilihan buka/tutup diingat per peramban.</div>
+        </div>
+      </div><div class="cap">Tanpa bayangan · tanpa garis kiri berwarna · header band hanya bila halaman punya ≥ 4 kartu setara; halaman dengan satu-dua kartu memakai kartu polos</div></div>
+    </section>
+
+    <!-- ═════════ TABEL ═════════ -->
+    <section id="tabel">
+      <h2><span class="n">11</span>Tabel</h2>
+      <p class="d">Tabel adalah komponen terpenting app ini — Posisi, Kandidat, Peringkat, Riwayat. Kepala kolom kecil uppercase, baris 40px, angka rata kanan, baris kedua untuk meta, tindakan baris sebagai tautan oranye di kolom paling kanan.</p>
+      <div class="spec"><div class="body white" style="padding: 0;">
+        <table class="data">
+          <thead><tr><th style="width: 36%;">Posisi</th><th>Pejabat</th><th>Run terakhir</th><th>Readiness #1</th><th class="r">Kandidat</th><th class="r">RTC</th><th class="r"></th></tr></thead>
+          <tbody>
+            <tr class="sel"><td>Finance &amp; Accounting Department Head<span class="m o">Pensiun Des 2026 · belum ada suksesor dipilih</span></td><td>M. Wulandari<span class="m">Grade 8</span></td><td class="num">2026-09-08</td><td>Short</td><td class="r num">27</td><td class="r num">0</td><td class="r"><a class="act" href="#">Buka</a></td></tr>
+            <tr><td>Sales Area Manager — Jawa Barat<span class="m o">Belum pernah di-scoring</span></td><td>A. Hakim<span class="m">Grade 7</span></td><td class="num">—</td><td>—</td><td class="r num">—</td><td class="r num">—</td><td class="r"><a class="act" href="#">Scoring</a></td></tr>
+            <tr><td>IT Application Development Department Head<span class="m">Pensiun 2027</span></td><td>R. Santoso<span class="m">Grade 8</span></td><td class="num">2026-09-12</td><td>Short</td><td class="r num">24</td><td class="r num">2</td><td class="r"><a class="act" href="#">Buka</a></td></tr>
+            <tr><td>Warehouse Supervisor — Cikarang<span class="m">Tanpa job profile · dinilai dari kompetensi pejabat</span></td><td>D. Prasetyo<span class="m">Grade 6</span></td><td class="num">2026-09-10</td><td>Medium</td><td class="r num">24</td><td class="r num">1</td><td class="r"><a class="act" href="#">Buka</a></td></tr>
+            <tr><td>Learning &amp; Development Section Head</td><td>S. Lestari<span class="m">Grade 6</span></td><td class="num">2026-09-01</td><td>Long</td><td class="r num">31</td><td class="r num">1</td><td class="r"><a class="act" href="#">Buka</a></td></tr>
+          </tbody>
+        </table>
+      </div><div class="cap">Baris terpilih orange-50 · hover gray-25 · "—" untuk nilai yang memang belum ada, bukan 0 · meta oranye hanya untuk yang menunggu tindakan · kolom ID/kode dalam mono</div></div>
+      <div class="dd">
+        <div class="yes"><h6>Lakukan</h6><ul><li>Urutan bawaan mengikuti urgensi, bukan alfabet.</li><li>Filter cepat sebagai segmen berhitung di atas tabel; pencarian di kanan.</li><li>Paginasi teks: "Menampilkan 10 dari 31 · Berikutnya →".</li></ul></div>
+        <div class="no"><h6>Hindari</h6><ul><li>Lencana warna untuk setiap nilai readiness.</li><li>Ikon aksi tanpa label (pensil, tong sampah) — pakai kata, atau menu "…".</li><li>Kartu grid untuk data yang sebenarnya tabel.</li></ul></div>
+      </div>
+    </section>
+
+    <!-- ═════════ STATUS ═════════ -->
+    <section id="status">
+      <h2><span class="n">12</span>Status &amp; angka</h2>
+      <p class="d">Tag hanya untuk status yang bermakna berbeda dan perlu dipindai cepat. Angka ringkasan sebagai <b>strip bergaris</b>, bukan empat kartu dengan ikon.</p>
+      <div class="spec"><div class="body white">
+        <div class="row">
+          <span class="tag ok">Berhasil</span><span class="tag ok">Fit</span><span class="tag warn">Perlu perhatian</span><span class="tag warn">Fit, catatan · 85%</span><span class="tag bad">Gagal</span><span class="tag bad">Unfit · 40%</span><span class="tag info">Berjalan</span><span class="tag neutral">Bawaan</span><span class="tag neutral">Not Ready</span><span class="tag act">Belum ada suksesor</span>
+        </div>
+        <p style="margin: 14px 0 8px; font-size: 13px; color: var(--gray-600);">Readiness ditulis sebagai teks biasa di tabel; sebagai tag hanya di kartu ringkasan kandidat: <b>Short</b> · <b>Medium</b> · <b>Long</b> · <span class="tag neutral">Not Ready</span></p>
+        <div class="strip" style="margin-top: 18px;">
+          <div><div class="l">Positions</div><div class="v num">42</div></div>
+          <div><div class="l">Sudah di-scoring</div><div class="v num">28<small>67%</small></div></div>
+          <div><div class="l">Suksesor dipilih</div><div class="v num">19</div></div>
+          <div><div class="l">Perlu pergantian</div><div class="v num o">6</div></div>
+          <div><div class="l">Talent pool lolos</div><div class="v num">118<small>dari 412</small></div></div>
+        </div>
+      </div><div class="cap">Tag: tinggi 22px, radius 4px, garis 1px, tanpa titik bulat · Strip: garis atas 1px hitam, pembatas kolom 1px abu; hanya angka yang menuntut tindakan berwarna oranye-700</div></div>
+    </section>
+
+    <!-- ═════════ PESAN ═════════ -->
+    <section id="pesan">
+      <h2><span class="n">13</span>Pesan, dialog, kosong</h2>
+      <p class="d">Pesan sebaris menjelaskan <em>apa</em> dan <em>lalu apa</em>. Dialog konfirmasi menyebut akibatnya. Keadaan kosong menyebut penyebabnya dan menawarkan langkah berikutnya.</p>
+      <div class="spec"><div class="body">
+        <div class="two">
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div class="notice info"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><span><b>Menampilkan pemetaan tersimpan</b>318 pasangan, terakhir disimpan 2026-09-12 14:20. Jalankan sinkronisasi untuk menghitung ulang.</span></div>
+            <div class="notice warn"><svg viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v5M12 17h.01"/></svg><span><b>Sesi sudah tersimpan, layanan scoring belum menjemputnya</b>Jangan jalankan ulang — sesi menunggu giliran dan dimulai otomatis saat slot kosong.</span></div>
+            <div class="notice bad"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg><span><b>Layanan sinkronisasi tidak dapat dihubungi</b>Semua tombol sinkronisasi dinonaktifkan. Periksa container sync atau SYNC_SERVICE_URL, lalu muat ulang.</span></div>
+            <div class="toast"><svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg><span>Program berhasil disimpan.<small>Berlaku untuk run berikutnya; run yang sudah selesai tidak berubah.</small></span></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div class="dialog">
+              <h4>Hapus program "Custom Talent"?</h4>
+              <p>Program ini hilang dari pilihan saat memulai scoring. Run yang sudah selesai di bawah program ini tetap tersimpan beserta aturannya. Tindakan ini tidak dapat dibatalkan.</p>
+              <div class="ft"><button class="btn ghost">Batal</button><button class="btn danger">Hapus program</button></div>
+            </div>
+            <div class="empty">
+              <h5>Belum ada pemetaan tersimpan untuk Company ini</h5>
+              <p>Tekan Jalankan Pencocokan untuk menyusun pasangan posisi ↔ job profile, lalu Simpan Pemetaan agar tampil di kunjungan berikutnya.</p>
+              <button class="btn primary sm">Jalankan Pencocokan</button>
+            </div>
+          </div>
+        </div>
+      </div><div class="cap">Notice: ikon 18px + judul tebal + satu kalimat tindak lanjut · Toast: gelap, ikon oranye, hilang sendiri · Dialog: judul berupa pertanyaan lengkap, tombol merusak memakai label kata kerja yang sama dengan pemicunya</div></div>
+    </section>
+
+    <!-- ═════════ POLA ═════════ -->
+    <section id="pola">
+      <h2><span class="n">14</span>Lima pola halaman</h2>
+      <p class="d">Setiap halaman app termasuk salah satu pola ini. Menambah halaman baru berarti memilih polanya dulu, bukan menyusun kartu dari nol.</p>
+      <div class="three">
+        <div class="pat"><div class="wf"><div class="hrow"><div class="b" style="width: 40%;"></div></div><div class="b" style="height: 30px; width: 85%;"></div><div class="hrow" style="gap: 2px;"><div class="b" style="height: 34px; flex: 1;"></div><div class="b" style="height: 34px; flex: 1;"></div><div class="o" style="height: 34px; flex: 1;"></div><div class="b" style="height: 34px; flex: 1;"></div></div><div style="display: grid; grid-template-columns: 1.6fr 1fr; gap: 8px; flex: 1;"><div class="b"></div><div class="b"></div></div></div><h4>A · Ringkasan</h4><p>Beranda. Kalimat pembuka yang menyebut hal mendesak, strip angka, tabel "menunggu keputusan", kolom samping kecil. Tanpa grafik dekoratif.</p></div>
+        <div class="pat"><div class="wf"><div class="hrow"><div class="b" style="width: 40%;"></div><div class="o" style="width: 60px; margin-left: auto;"></div></div><div class="hrow"><div class="b" style="width: 20%;"></div><div class="b" style="width: 18%;"></div><div class="b" style="width: 22%;"></div><div class="b" style="width: 120px; margin-left: auto;"></div></div><div class="b" style="height: 14px;"></div><div class="b" style="height: 22px; opacity: 0.7;"></div><div class="b" style="height: 22px; opacity: 0.7;"></div><div class="b" style="height: 22px; opacity: 0.7;"></div><div class="b" style="height: 22px; opacity: 0.7;"></div></div><h4>B · Daftar &amp; saring</h4><p>Manajemen Posisi, Kandidat, Dokumen job profile, Riwayat. Header + aksi utama, segmen filter berhitung + pencarian, tabel, paginasi teks.</p></div>
+        <div class="pat"><div class="wf"><div class="hrow"><div class="b" style="width: 55%; height: 18px;"></div><div class="o" style="width: 70px; margin-left: auto;"></div></div><div class="hrow"><div class="b" style="width: 14%;"></div><div class="b" style="width: 14%;"></div><div class="b" style="width: 14%;"></div><div class="b" style="width: 14%;"></div></div><div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px; flex: 1;"><div class="b"></div><div class="b"></div></div></div><h4>C · Detail bertab</h4><p>Detail posisi, detail kandidat. Header dengan konteks (pejabat, program, run), tab garis, konten dua kolom: utama + ringkasan samping.</p></div>
+        <div class="pat"><div class="wf"><div class="hrow"><div class="b" style="width: 35%;"></div></div><div class="hrow"><div class="b" style="width: 22%; height: 18px;"></div><div class="o" style="width: 22%; height: 18px;"></div><div class="b" style="width: 22%; height: 18px;"></div></div><div class="b" style="height: 40px;"></div><div class="b" style="height: 40px;"></div><div class="b" style="height: 40px;"></div><div class="b" style="height: 40px;"></div></div><h4>D · Pengaturan</h4><p>Tata Kelola, Sinkronisasi, Pengguna. Seksi bernama dengan lencana cakupan (Company aktif / semua Company), panel lipat berringkasan, satu bar Simpan lengket per formulir.</p></div>
+        <div class="pat"><div class="wf"><div class="hrow"><div class="o" style="width: 18px; height: 18px; border-radius: 50%;"></div><div class="b" style="width: 30%;"></div><div class="b" style="width: 18px; height: 18px; border-radius: 50%;"></div><div class="b" style="width: 30%;"></div></div><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1;"><div class="b"></div><div class="b"></div></div><div class="hrow"><div class="o" style="width: 90px; height: 24px; margin-left: auto;"></div></div></div><h4>E · Alur bertahap</h4><p>Mulai Scoring, Tambah massal. Langkah bernomor, satu keputusan per langkah, ringkasan konfigurasi di kanan, tombol lanjut di kanan bawah. Status "dimulai" vs "diantrekan" dibedakan kuning, bukan merah.</p></div>
+      </div>
+    </section>
+
+    <!-- ═════════ TULISAN ═════════ -->
+    <section id="tulisan">
+      <h2><span class="n">15</span>Nada tulisan</h2>
+      <p class="d">Bahasa Indonesia untuk pengguna; istilah teknis (AHP, TOPSIS, MCU, job profile) tetap. Kalimat, bukan label — dan angka selalu diikuti apa artinya.</p>
+      <table class="roles">
+        <thead><tr><th>Konteks</th><th>Hindari</th><th>Tulis</th></tr></thead>
+        <tbody>
+          <tr><td>Deskripsi header</td><td>"Kelola program scoring, aturan filter, bobot kriteria, dan lihat audit log."</td><td>"42 posisi terdaftar · 28 sudah di-scoring · 6 perlu pergantian dalam 12 bulan."</td></tr>
+          <tr><td>Angka ringkasan</td><td>"205" di bawah "DALAM PROSES"</td><td>"205 dalam proses — 1 diekstrak, 204 menunggu"</td></tr>
+          <tr><td>Kosong</td><td>"Belum ada data."</td><td>"Belum ada pemetaan tersimpan untuk Company ini. Tekan Jalankan Pencocokan…"</td></tr>
+          <tr><td>Tombol nonaktif</td><td>Tombol abu tanpa keterangan</td><td>Teks di dekatnya: "Semua tombol sinkronisasi dinonaktifkan — layanan tidak dapat dihubungi."</td></tr>
+          <tr><td>Peringatan antrean</td><td>Merah "Penilaian dihentikan"</td><td>Kuning "Sesi sudah tersimpan, jangan jalankan ulang — menunggu slot layanan."</td></tr>
+          <tr><td>Konfirmasi merusak</td><td>"Hapus? Tindakan ini tidak dapat dibatalkan."</td><td>"Hapus program 'X'? Program hilang dari pilihan scoring; run yang sudah selesai tetap tersimpan."</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ═════════ MIGRASI ═════════ -->
+    <section id="migrasi">
+      <h2><span class="n">16</span>Migrasi dari kode sekarang</h2>
+      <p class="d">Urutan yang aman: token dulu (satu file, efek ke seluruh app), lalu shell, lalu komponen bersama, baru halaman per halaman. Setiap langkah bisa dikirim terpisah.</p>
+      <table class="mig">
+        <thead><tr><th style="width: 24%;">Di mana</th><th>Sekarang</th><th>Menjadi</th></tr></thead>
+        <tbody>
+          <tr><td><code>app/globals.css</code> :root</td><td><code>--accent</code> / <code>--sidebar-accent</code> biru (oklch … 244/265); <code>--radius: 0.75rem</code>; netral abu-biru (hue 247–264)</td><td>accent → orange-50 / orange-800; radius 0.5rem (kontrol) — kontainer memakai <code>rounded-lg</code> 8px; netral hangat seperti tabel Warna; tambah token <code>--ok/--warn/--bad/--info</code></td></tr>
+          <tr><td><code>app/(dashboard)/layout.tsx</code></td><td>Latar gradien radial oranye + gradien linear + pola grid 40px pada <code>&lt;main&gt;</code></td><td><code>bg-background</code> polos; hapus div pola grid</td></tr>
+          <tr><td><code>components/dashboard-header.tsx</code></td><td>Overline "PULSE COMMAND CENTER", <code>backdrop-blur</code>, bayangan panjang, <code>bg-background/88</code></td><td>Latar putih, <code>border-b</code>, judul 22px, deskripsi satu kalimat; tanpa overline dan bayangan</td></tr>
+          <tr><td><code>components/sidebar-nav.tsx</code></td><td><code>bg-sidebar/92 backdrop-blur-xl</code>, bayangan pada logo &amp; item aktif, CTA Talent Pool hijau emerald</td><td>Putih, garis kanan; item aktif <code>bg-accent text-accent-foreground</code>; CTA kedua memakai varian secondary, bukan hijau</td></tr>
+          <tr><td>Kartu statistik (Beranda, Dokumen, Sinkronisasi lama)</td><td>Kartu berbayang + ikon dalam lingkaran berwarna + angka 30px</td><td>Komponen <b>strip</b> (§12) — satu baris bergaris</td></tr>
+          <tr><td><code>components/ui/badge.tsx</code> pemakaian</td><td>Lencana untuk readiness, jalur match, jenis, dsb.</td><td>Teks biasa; tag hanya untuk ok/warn/bad/info/act (§12)</td></tr>
+          <tr><td><code>components/settings/collapsible-card.tsx</code></td><td>Sudah: header band 4 nada + ringkasan</td><td>Dipertahankan; jadi komponen bersama untuk Tata Kelola juga</td></tr>
+          <tr><td><code>components/job-profiles/hub-chrome.tsx</code></td><td>Strip pill 5 warna berbeda per seksi</td><td>Tab garis (§8) — satu warna aktif, jumlah dokumen di tab Dokumen &amp; Kamus</td></tr>
+          <tr><td>HAV Heat Grid di Beranda</td><td>16 sel oranye di halaman pembuka</td><td>Pindah ke halaman analisis / detail posisi; Beranda memakai pola A</td></tr>
+          <tr><td>Font</td><td>Figtree (layout) tetapi token <code>--font-sans: Inter</code></td><td>Samakan token ke Figtree; mono JetBrains Mono untuk ID/kode</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</div>
+</body>
+</html>

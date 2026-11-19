@@ -1,0 +1,23 @@
+-- Remove Keyakinan Penempatan (MCU placement confidence) together with the
+-- table only it used.
+--
+-- mcu_confidence_assessments (drizzle/0073): one versioned row per (run,
+-- candidate) holding the placement-confidence figure, its risk band and a
+-- sealed payload (narrative, affected duties, sources). Written only by the
+-- role-fit simulation and the "Nilai / Hitung ulang keyakinan" control, read
+-- only by the MCU badge, the insight dialog and the rerun lineage loader — all
+-- of which are deleted from the web app and from scoring-service in the same
+-- change. The layer never fed `analysis_results.final_score`, the decision
+-- matrix or any rank, so no finished ranking changes.
+--
+-- Data in this table is discarded. What stays: the MCU status, the advisory
+-- MCU filter rule (a flag, never a score) and the MCU note columns on
+-- `candidates` (`mcu_note`, `mcu_note_manual`) with their sync.
+--
+-- Apply AFTER the new web app and scoring-service are running: the previous
+-- builds still read and write this table.
+--
+-- Idempotent.
+--   tsx scripts/apply-sql.ts drizzle/0095_drop_mcu_confidence.sql
+
+DROP TABLE IF EXISTS mcu_confidence_assessments;

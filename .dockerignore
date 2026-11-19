@@ -1,0 +1,73 @@
+# ── Web (Next.js) build context = repo root ──────────────────────────────
+# The image installs its own deps and rebuilds, so keep the host's installed
+# modules and build output out of the context. Copying host node_modules over
+# the image's pnpm store breaks the build ("cannot replace directory with file").
+
+# Dependencies (root + any nested)
+node_modules
+**/node_modules
+
+# Next.js / build outputs
+.next
+out
+build
+dist
+**/dist
+
+# Sibling deployables have their own build contexts and are not needed here…
+sync-service
+scoring-service
+# …except the dependency-free TOPSIS modules the web app's run comparison and
+# reproducibility check import, so both deployables rank with ONE
+# implementation of the formula (I-7, lib/run-compare.ts). Keep these files
+# free of database, model and Node-only imports.
+!scoring-service/src/ahp-criteria.ts
+!scoring-service/src/topsis.ts
+!scoring-service/src/topsis-ranking.ts
+# …and the AHP formula + Saaty-scale validation the web app re-exports from
+# lib/ahp.ts (docs/ahp-input-sync.md §3), for the same reason.
+!scoring-service/src/ahp.ts
+!scoring-service/src/ahp-saaty.ts
+# …and the calculation-trace contract the XLSX export reads (lib/run-trace/),
+# which is types and one constant, nothing else.
+!scoring-service/src/run-trace-types.ts
+
+# topic-service is a Python deployable with its own build context
+# (docker-compose: context ./topic-service). Its local virtualenv and model
+# caches run to gigabytes, and nothing in the web app imports from it.
+topic-service
+
+# Python environments / caches anywhere in the tree
+.venv
+**/.venv
+venv
+**/venv
+**/__pycache__
+
+# Local data / scratch
+backups
+coverage
+graphify-out
+# Fictional upload files for demos (and their Python generator); uploaded by
+# hand through the Sinkronisasi page, never read by the app.
+demo-data
+# Production database exports (scripts/db-dump.cjs) — real data, must never be
+# baked into an image layer.
+db-export
+# The master encryption key is bind-mounted at runtime (docker-compose:
+# ./secrets:/app/secrets). Copying it into the build context would put it in
+# a builder layer and the build cache.
+secrets
+*.log
+npm-debug.log*
+
+# VCS / editor / OS
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# NOTE: .env* is intentionally NOT ignored — the web Dockerfile copies
+# /app/.env* from the builder stage into the runtime image.

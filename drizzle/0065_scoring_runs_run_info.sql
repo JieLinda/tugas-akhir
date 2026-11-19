@@ -1,0 +1,32 @@
+-- Run-level diagnostics, moved onto the RUN so they survive the session.
+--
+-- `runInfo` — which reference competency set was used and where it came from,
+-- the technical similarity anchors and their provenance, the career scale and
+-- depth targets, the AHP criteria dropped and the effective weights, the
+-- augment/exclusion summaries, the scored and finalist counts — lived only in
+-- `tournament_sessions.final_ranked`.
+--
+-- That was the wrong home. A tournament session is working space: it holds
+-- `current_pool`, `pending_pool`, `stages`, and it is legitimately transient.
+-- `runInfo` describes the RUN, and in this product a completed ranking is the
+-- permanent record of an assessment made on a date — the same invariant the
+-- exclusion re-rank and `config_snapshot` already follow.
+--
+-- The consequence of the wrong home was not theoretical. The scoring wizard
+-- deleted its session on success, so every run completed through it lost its
+-- entire diagnostics the instant it succeeded: `getRunConfigurationAction`'s
+-- LEFT JOIN found no session, `runInfo` came back null, and the whole "Sumber
+-- Acuan & Penyesuaian" section of the Konfigurasi tab silently stopped
+-- rendering — along with the AHP dropped-criteria list, the pool counts, and
+-- the exclusion re-rank's ability to inherit its base run's diagnostics.
+--
+-- The wizard no longer deletes, but that only closes the one leak that existed.
+-- Storing the diagnostics on the run makes them independent of the session
+-- lifecycle entirely, so a future path that deletes a session without deleting
+-- its run cannot resurrect this bug.
+--
+-- Readers COALESCE (run first, session second) rather than switching over: runs
+-- finished before this column exists still have their copy in the session, and
+-- runs whose session the wizard already deleted have neither — that data is
+-- gone and no migration can recover it.
+ALTER TABLE scoring_runs ADD COLUMN IF NOT EXISTS run_info jsonb;

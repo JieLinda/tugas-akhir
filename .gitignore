@@ -1,0 +1,80 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+public/generated
+
+backups
+
+# ==========================
+# Python
+# ==========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+**/.venv/
+**/venv/
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Python bytecode
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+graphify-out/
+
+# Database exports (scripts/db-dump.cjs) — berisi data produksi, jangan di-commit
+/db-export/
+
+# Files uploaded through the Sinkronisasi page (local source-file store for the
+# file-based syncs). Real data — never commit.
+sync-service/uploads/
+
+# Master encryption key, written and rotated by the Keamanan settings page.
+# NEVER commit this: it is the only thing standing between a leaked database
+# dump and the plaintext behind every encrypted column. Losing it makes those
+# values permanently unrecoverable, so back it up somewhere that is not git.
+#
+# Unanchored on purpose: each deployable mounts its own secrets/ dir
+# (secrets/ at the root for the web app, sync-service/secrets/ for the sync
+# service). A leading-path pattern only matches the root one, which left the
+# sync service's copy of the SAME key untracked-but-committable.
+**/secrets/*.key
+**/secrets/*.key.*

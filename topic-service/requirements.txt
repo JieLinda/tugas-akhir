@@ -1,0 +1,19 @@
+# Pulse topic-service dependencies.
+#
+# NOTE: `torch` is intentionally NOT listed here — it is a transitive dependency
+# of bertopic (via sentence-transformers) but is installed separately from the
+# CPU-only wheel index in the Dockerfile (multi-GB CUDA wheels otherwise). We
+# never actually embed in this service (vectors are precomputed in Postgres);
+# the import just has to resolve. numpy is pinned < 2 for numba/umap/hdbscan ABI.
+
+fastapi>=0.110,<0.116
+uvicorn[standard]>=0.27,<0.33
+psycopg[binary,pool]>=3.1,<3.3
+python-dotenv>=1.0,<2
+
+numpy>=1.24,<2
+scikit-learn>=1.3,<1.6
+umap-learn>=0.5.5,<0.6
+hdbscan>=0.8.36,<0.9
+bertopic>=0.16,<0.17
+Sastrawi==1.0.1

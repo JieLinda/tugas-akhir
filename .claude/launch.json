@@ -1,0 +1,27 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pulse-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "dev"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "design-system-docs",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "3457",
+        "--directory",
+        "docs/design-system",
+        "--bind",
+        "127.0.0.1"
+      ],
+      "port": 3457
+    }
+  ]
+}

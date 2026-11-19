@@ -1,0 +1,11 @@
+-- audit_log.entity_id was uuid, but audited entities have heterogeneous keys:
+-- UUIDs (program_templates, critical_positions, scoring_runs), integer serials
+-- (sync_company_tenant_map, sync_job_profiles), and emails (users are
+-- pre-provisioned by email before a row exists). Every non-UUID write failed the
+-- 22P02 uuid cast, and logAudit() swallows errors — so those audit entries were
+-- silently dropped instead of recorded.
+--
+-- Widening to varchar(128): existing uuid values cast to text losslessly, and
+-- entity_id is only ever selected/displayed, never compared against a uuid
+-- literal (see lib/audit.ts), so no query needs to change.
+ALTER TABLE "audit_log" ALTER COLUMN "entity_id" TYPE varchar(128) USING "entity_id"::varchar(128);

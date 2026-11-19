@@ -1,0 +1,1 @@
+ALTER TABLE "candidate_technical_competencies" ADD COLUMN "is_manual" boolean DEFAULT false NOT NULL;
