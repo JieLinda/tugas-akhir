@@ -21,9 +21,8 @@ import type {
 import { computeAhpWeights, isValidPairwise } from '@/lib/ahp';
 import { countFilterRules, normalizeFilterTree } from '@/lib/filter-rules';
 import { getProgramTemplate } from '@/lib/programs';
-import { decryptCandidateDetailsSnapshot } from '@/lib/candidate-crypto';
 import { requirePermission } from '@/lib/rbac';
-import { getCurrentTenantId, TENANTS } from '@/lib/tenant';
+import { getCurrentTenantId, tenantNameMap } from '@/lib/tenant';
 import { getReadinessConfig, type ReadinessConfig } from '@/lib/readiness-config-actions';
 import { demoScrub } from '@/lib/demo/names';
 
@@ -1299,9 +1298,8 @@ async function getAhpRunDetailActionImpl(runId: string): Promise<RunDetail> {
 
   const candidates: CandidateProgressRow[] = (arRes.rows as any[]).map((r) => {
     // analysis_results.details is a TEXT column holding a JSON string — parse it
-    // (as everywhere else in the app) and decrypt any person fields that a
-    // pre-decryption scoring-service may have stored encrypted.
-    const d = decryptCandidateDetailsSnapshot(parseDetails(r.details)) ?? {};
+    // (as everywhere else in the app).
+    const d = parseDetails(r.details) ?? {};
     const ahp = d.ahpTopsis ?? {};
     return {
       candidateId: r.candidateId,
@@ -1670,9 +1668,10 @@ async function getRunConfigurationActionImpl(runId: string): Promise<RunConfigur
   // `includedTenantIds` existed only ever pooled the owning tenant.
   const includedTenantIds: string[] =
     (rr.filterSummary?.includedTenantIds as string[] | undefined)?.filter(Boolean) ?? [tenantId];
+  const tenantNames = await tenantNameMap();
   const businessUnits = includedTenantIds.map((id) => ({
     id,
-    name: TENANTS.find((t) => t.id === id)?.name ?? id,
+    name: tenantNames.get(id) ?? id,
   }));
 
   const demoView = await isDemoMode();

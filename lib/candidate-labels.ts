@@ -7,8 +7,8 @@
  * rendered the same columns either re-implemented them or printed the raw code.
  * They live here so there is exactly one answer to "how is MCU written".
  *
- * Deliberately NOT a client/server split: these are pure string maps with no
- * imports, so the Kandidat page (server-rendered via pulse-data) and the Talent
+ * Deliberately NOT a client/server split: these are pure string maps (the
+ * discipline ones read the client-safe lib/discipline.ts), so the Kandidat page (server-rendered via pulse-data) and the Talent
  * Pool card view (client component) can share them literally rather than by
  * copy.
  *
@@ -20,6 +20,8 @@
  * clear/warning/sanction forms and return "-" for 'CLEAR'), which is worth
  * fixing as its own change, not as a side effect of a display tidy-up.
  */
+
+import { disciplineLevel } from '@/lib/discipline';
 
 /** MCU status → human label. Unknown/absent reads as '-' (as on Kandidat). */
 export function mcuLabel(value: string | null | undefined): string {
@@ -47,27 +49,8 @@ export function mcuLabel(value: string | null | undefined): string {
  */
 export function disciplineLabel(value: string | null | undefined): string {
   if (!value) return '-';
-  const v = String(value).toUpperCase();
-  switch (v) {
-    case 'CLEAR':
-      return 'Bersih';
-    case 'ST':
-      return 'ST (Surat Teguran)';
-    case 'SP_FIRST_LAST':
-      return 'SP Berat (First/Last)';
-    case 'SP3':
-      return 'SP 3';
-    case 'ACTIVE_SP':
-      return 'SP Aktif';
-    case 'SP_UNDER_2_YEARS':
-      return 'SP < 2 tahun';
-    case 'WARNING':
-      return 'Warning';
-    case 'SANCTION':
-      return 'Sanksi aktif';
-    default:
-      return v;
-  }
+  // Labels and their order live in lib/discipline.ts, shared with the pickers.
+  return disciplineLevel(value)?.label ?? String(value).toUpperCase();
 }
 
 /**

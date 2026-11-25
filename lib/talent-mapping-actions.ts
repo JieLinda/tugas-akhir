@@ -7,7 +7,6 @@ import { db } from '@/lib/db';
 import * as schema from '@/lib/db/schema';
 import { logAudit } from '@/lib/audit';
 import { getCurrentUser } from '@/lib/auth';
-import { encryptIfEnabled, ensureUnlocked, LockedError } from '@/lib/crypto/key-store';
 import { ensureLocalUser } from '@/lib/pulse-data';
 import { requirePermission } from '@/lib/rbac';
 import { isDemoMode } from '@/lib/app-mode';
@@ -20,7 +19,7 @@ import {
   type TalentMappingMoveInput,
   type TalentMappingMoveResult,
 } from '@/lib/talent-mapping';
-import { getTalentMappingData, loadTalentMappingAudit, openQuadrant } from '@/lib/talent-mapping-data';
+import { getTalentMappingData, loadTalentMappingAudit } from '@/lib/talent-mapping-data';
 import { getCandidateMappingStanding } from '@/lib/talent-pool-data';
 import { getCurrentTenantId } from '@/lib/tenant';
 import { demoScrub } from '@/lib/demo/names';
@@ -109,7 +108,6 @@ async function moveTalentMappingCandidateActionImpl(
   // On the map = passes the Talent Pool's discipline rule. A candidate who does
   // not could still be placed by a forged request, and would then carry a HAV
   // decided on a page that never showed them.
-  await ensureUnlocked();
   const standing = await getCandidateMappingStanding(input.candidateId);
   if (!standing) {
     return {
@@ -152,7 +150,10 @@ async function moveTalentMappingCandidateActionImpl(
   }
 
   const [existing] = await db
-    .select({ id: schema.talentMappingPlacements.id, quadrant: schema.talentMappingPlacements.quadrant })
+    .select({
+      id: schema.talentMappingPlacements.id,
+      version: sql<string>`${schema.talentMappingPlacements.updatedAt}::text`,
+    })
     .from(schema.talentMappingPlacements)
     .where(
       and(
@@ -161,16 +162,6 @@ async function moveTalentMappingCandidateActionImpl(
       ),
     )
     .limit(1);
-  if (existing && openQuadrant(existing.quadrant).quadrant == null) {
-    // Every reader fell through to the automatic answer for this candidate;
-    // overwriting a decision nobody can read would destroy it unseen.
-    return {
-      ok: false,
-      message:
-        'Penempatan tersimpan untuk kandidat ini tidak dapat dibaca (kunci enkripsi tidak cocok), sehingga tidak diubah.',
-      data: null,
-    };
-  }
   const currentQuadrant = hav.quadrant;
 
   if ((input.expectedQuadrant ?? null) !== (currentQuadrant ?? null)) {
@@ -190,31 +181,23 @@ async function moveTalentMappingCandidateActionImpl(
   // identity). Snapshotted onto the row so "who" survives the user row.
   const username = sessionUser?.email?.trim().toLowerCase() || null;
 
-  // Seal BEFORE opening the transaction: there is no reason to hold row locks
-  // while finding out the app is locked.
-  let sealed: { from: string | null; to: string | null; baseline: string | null; why: string | null };
-  try {
-    const [from, to, baseline, why] = await Promise.all([
-      encryptIfEnabled(currentQuadrant != null ? String(currentQuadrant) : null),
-      encryptIfEnabled(newQuadrant != null ? String(newQuadrant) : null),
-      encryptIfEnabled(automatic.quadrant != null ? String(automatic.quadrant) : null),
-      encryptIfEnabled(justification),
-    ]);
-    sealed = { from, to, baseline, why };
-  } catch (err) {
-    if (err instanceof LockedError) return { ok: false, message: err.message, data: null };
-    throw err;
-  }
+  const stored = {
+    from: currentQuadrant != null ? String(currentQuadrant) : null,
+    to: newQuadrant != null ? String(newQuadrant) : null,
+    baseline: automatic.quadrant != null ? String(automatic.quadrant) : null,
+    why: justification,
+  };
 
   // Every write below is CONDITIONAL on the placement row being exactly what was
-  // read above — the stored quadrant value doubles as the version token (a
-  // fresh seal never repeats a ciphertext, so any intervening write changes
-  // it). The `expectedQuadrant` check alone runs before this transaction, and
-  // two submissions racing each other could both pass it; this is what makes
-  // the second one lose instead of silently overwriting the first.
+  // read above — its database-written `updated_at` (compared as text, at full
+  // precision) is the version token, since every write moves it to the
+  // writing transaction's `now()`. The `expectedQuadrant` check alone runs
+  // before this transaction, and two submissions racing each other could both
+  // pass it; this is what makes the second one lose instead of silently
+  // overwriting the first.
   const placements = schema.talentMappingPlacements;
   const unchanged = existing
-    ? and(eq(placements.id, existing.id), eq(placements.quadrant, existing.quadrant))
+    ? and(eq(placements.id, existing.id), sql`${placements.updatedAt}::text = ${existing.version}`)
     : undefined;
   try {
     await db.transaction(async (tx) => {
@@ -225,10 +208,10 @@ async function moveTalentMappingCandidateActionImpl(
         written = await tx
           .update(placements)
           .set({
-            quadrant: sealed.to!,
-            baselineQuadrant: sealed.baseline,
+            quadrant: stored.to!,
+            baselineQuadrant: stored.baseline,
             baselineSource: automatic.source,
-            justification: sealed.why!,
+            justification: stored.why,
             placedBy: actorId,
             placedByUsername: username,
             updatedAt: sql`now()`,
@@ -243,10 +226,10 @@ async function moveTalentMappingCandidateActionImpl(
           .values({
             tenantId,
             candidateId: standing.id,
-            quadrant: sealed.to!,
-            baselineQuadrant: sealed.baseline,
+            quadrant: stored.to!,
+            baselineQuadrant: stored.baseline,
             baselineSource: automatic.source,
-            justification: sealed.why!,
+            justification: stored.why,
             placedBy: actorId,
             placedByUsername: username,
           })
@@ -263,11 +246,11 @@ async function moveTalentMappingCandidateActionImpl(
         candidateId: standing.id,
         mappingKind: 'hav16',
         action: revert ? 'revert_to_automatic' : 'manual_place',
-        oldQuadrant: sealed.from,
-        newQuadrant: sealed.to,
-        baselineQuadrant: sealed.baseline,
+        oldQuadrant: stored.from,
+        newQuadrant: stored.to,
+        baselineQuadrant: stored.baseline,
         baselineSource: automatic.source,
-        justificationReason: sealed.why,
+        justificationReason: stored.why,
         changedByUserId: actorId,
         changedByUsername: username,
       });
@@ -281,7 +264,7 @@ async function moveTalentMappingCandidateActionImpl(
 
   // App-level trail (Tata Kelola → Riwayat Perubahan). Names the person, as
   // every candidate audit summary does, but NOT the square or the reason —
-  // audit_log.summary is plaintext and those two are sealed in the talent trail.
+  // those two live in the talent trail.
   await logAudit({
     tenantId,
     actorId,

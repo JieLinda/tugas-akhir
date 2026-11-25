@@ -138,6 +138,7 @@ function configOf(s: RunSpec, isChild: boolean): RunConfigView {
     positionBasis: null,
     models: null,
     dataVersions: null,
+    topsis: { mode: 'classic', source: isChild ? null : 'own', recorded: !isChild, anchors: null },
   };
 }
 
@@ -464,6 +465,131 @@ describe('TC-CMP-HAND: a fixture computed by hand', () => {
   });
 });
 
+// ── A child ranked on its parent's TOPSIS yardstick ─────────────────────────
+
+/**
+ * The hand child as the engine now produces it: W (inside the parent's range)
+ * ranked against P's divisors and ideals, stored the way the engine stores, and
+ * `run_info.frozen.topsis` recorded as `anchored`.
+ */
+function anchoredHandChild(): { p: RunRecord; c: RunRecord } {
+  const p = mkRun(handParentSpec);
+  const pReplay = replayRun(p);
+  assert.ok(pReplay.available);
+  const anchors = {
+    colNorms: Object.fromEntries(TWO.map((k) => [k, pReplay.criteria.get(k)!.divisor])),
+    idealPos: Object.fromEntries(TWO.map((k) => [k, pReplay.criteria.get(k)!.idealPos])),
+    idealNeg: Object.fromEntries(TWO.map((k) => [k, pReplay.criteria.get(k)!.idealNeg])),
+  };
+  // Inside P's range, and NOT proportional to the existing column norms (30/15
+  // would scale both divisors by the same factor and leave classic closeness
+  // unchanged, so the classic-replay control below would prove nothing).
+  const pool = [...handParentSpec.pool, { id: W, name: 'W', aspects: { technical: 35, behavior: 12 }, comparison: true }];
+  const aspects = new Map(pool.map((x) => [x.id, aspectsOf(x.aspects)]));
+  const engine = rankCandidatesByTopsis(
+    pool.map((x) => x.id).sort().map((id) => ({ id })),
+    aspects,
+    W2,
+    new Set(CRITERIA.filter((k) => !TWO.includes(k))),
+    anchors,
+  );
+  const stored = Object.fromEntries(
+    engine.rankedAll.map((e, i) => [e.candidate.id, { closeness: Number(e.closeness.toFixed(6)), rank: i + 1 }]),
+  );
+  const c = mkRun({ ...handChildSpec, pool, stored });
+  c.config.topsis = { mode: 'anchored', source: 'parent', recorded: true, anchors };
+  return { p, c };
+}
+
+describe('TC-CMP-ANCH: a child ranked on its parent\'s yardstick replays, compares and attributes', () => {
+  test('it reproduces on its anchors — and would NOT on a classic replay (so the anchors are what is checked)', () => {
+    const { c } = anchoredHandChild();
+    const v = verifyRunReproducibility(c);
+    assert.ok(v.verifiable && v.reproducible, JSON.stringify(v));
+    const classic = verifyRunReproducibility({ ...c, config: { ...c.config, topsis: { ...c.config.topsis, mode: 'classic' } } });
+    assert.ok(classic.verifiable && !classic.reproducible, 'a classic replay of an anchored run must disagree');
+    const unreadable = replayRun({ ...c, config: { ...c.config, topsis: { ...c.config.topsis, anchors: null } } });
+    assert.equal(unreadable.available, false);
+  });
+
+  test('carried X, Y, Z keep the parent\'s closeness and order; W is inserted', () => {
+    const { p, c } = anchoredHandChild();
+    const pr = replayRun(p);
+    const cr = replayRun(c);
+    assert.ok(pr.available && cr.available);
+    for (const id of [X, Y, Z]) assert.equal(cr.byId.get(id)!.closeness, pr.byId.get(id)!.closeness, id);
+    const order = (r: typeof cr, ids: string[]) => ids.sort((a, b) => r.byId.get(a)!.rank - r.byId.get(b)!.rank);
+    assert.deepEqual(order(cr, [X, Y, Z]), order(pr, [X, Y, Z]));
+    const cmp = compareRuns(p, c);
+    assert.deepEqual(cmp.freezeViolations, []);
+    const scale = cmp.config.find((i) => i.key === 'topsis.scale')!;
+    assert.deepEqual([scale.a, scale.b, scale.same], ['Dihitung dari pool run ini', 'Skala run induk', false]);
+  });
+
+  test('the last attribution step is exactly the anchored child', () => {
+    const { p, c } = anchoredHandChild();
+    const steps = attribute(p, c)!;
+    const cr = replayRun(c);
+    assert.ok(cr.available);
+    for (const [id, v] of cr.byId) {
+      assert.equal(steps[3]!.byId.get(id)!.rank, v.rank, id);
+      assert.equal(steps[3]!.byId.get(id)!.closeness, v.closeness, id);
+    }
+  });
+
+  test('configViewFrom reads run_info.frozen.topsis; a run without it is classic', () => {
+    const anchored = configViewFrom({
+      isChild: true,
+      configSnapshot: null,
+      filterSummary: null,
+      finalistCount: 2,
+      runInfo: {
+        frozen: {
+          ahp: { activeCriteria: TWO },
+          topsis: {
+            version: 1,
+            mode: 'anchored',
+            source: 'parent_pool',
+            activeCriteria: TWO,
+            weightVector: { technical: 0.6, behavior: 0.4 },
+            colNorms: { technical: 60, behavior: 30 },
+            idealPos: { technical: 0.4, behavior: 0.26 },
+            idealNeg: { technical: 0.2, behavior: 0.13 },
+          },
+        },
+      },
+    }).topsis;
+    assert.equal(anchored.mode, 'anchored');
+    assert.equal(anchored.source, 'parent_pool');
+    assert.equal(anchored.anchors!.colNorms.technical, 60);
+    const legacy = configViewFrom({ isChild: true, configSnapshot: null, filterSummary: null, finalistCount: 2, runInfo: {} }).topsis;
+    assert.deepEqual(legacy, { mode: 'classic', source: null, recorded: false, anchors: null });
+  });
+});
+
+describe('TC-CMP-LEFT: "Keluar dari N besar" names its cause only when only the pool moved', () => {
+  test('the classic hand child: Y is overtaken by W alone → disalip kandidat pembanding', () => {
+    const cmp = compareRuns(mkRun(handParentSpec), mkRun(handChildSpec));
+    const y = cmp.ranking.find((r) => r.candidateId === Y)!;
+    assert.deepEqual([y.finalistChange, y.leftCause], ['keluar', 'overtaken_by_comparison']);
+    const sheet = buildComparisonSheets(toComparisonDto(cmp, explainComparison(cmp)), 'Posisi').find((s) => s.rows.some((r) => r.includes('Keluar dari N besar · disalip kandidat pembanding')));
+    assert.ok(sheet, 'the export carries the cause');
+  });
+
+  test('a reversal among carried candidates → bergeser karena pool berubah; other differences → undecided', () => {
+    // Parent: Y beats Z only because Y is closer to the anti-ideal... build it by stored ranks.
+    const p = mkRun({ ...handParentSpec, stored: { [Y]: { closeness: 0.9, rank: 1 }, [Z]: { closeness: 0.8, rank: 2 }, [X]: { closeness: 0.1, rank: 3 } } });
+    const c = mkRun({
+      ...handChildSpec,
+      stored: { [Z]: { closeness: 0.9, rank: 1 }, [W]: { closeness: 0.85, rank: 2 }, [Y]: { closeness: 0.8, rank: 3 }, [X]: { closeness: 0.1, rank: 4 } },
+    });
+    const y = compareRuns(p, c).ranking.find((r) => r.candidateId === Y)!;
+    assert.deepEqual([y.finalistChange, y.leftCause], ['keluar', 'pool_shift']);
+    const otherWeights = mkRun({ ...handChildSpec, weights: { ...W2, technical: 0.7, behavior: 0.3 }, stored: c.pool.reduce((m, x) => ({ ...m, [x.candidateId]: { closeness: x.storedCloseness, rank: x.storedRank } }), {}) });
+    assert.equal(compareRuns(p, otherWeights).ranking.find((r) => r.candidateId === Y)!.leftCause, null);
+  });
+});
+
 // ── Properties ──────────────────────────────────────────────────────────────
 
 describe('TC-CMP-PROP-i: a replay equals what was stored (NFR-RR-01, I-4)', () => {
@@ -752,7 +878,8 @@ describe('TC-CMP-TPL: every explanation template has a test', () => {
       'Pembagi normalisasi naik pada Kompetensi Teknis (1,67 kali) dan Behavior (1,67 kali), sehingga selisih pada kriteria-kriteria itu menyumbang lebih kecil terhadap jarak.',
     ]);
     assert.deepEqual(e.perCandidate.get(Y)!.map((x) => x.text), [
-      'Peringkat Y turun 1 tingkat, dari 2 ke 3 (kecocokan 60,0% → 26,1%, −33,9 pp) dan kini keluar dari N besar. ' +
+      // Only W (a comparison candidate) is newly above Y, so the cause is named.
+      'Peringkat Y turun 1 tingkat, dari 2 ke 3 (kecocokan 60,0% → 26,1%, −33,9 pp) dan kini keluar dari N besar karena disalip kandidat pembanding. ' +
         'Penyumbang terbesar: Kompetensi Teknis (menurunkan kecocokan: lebih jauh dari nilai tertinggi dan lebih dekat ke nilai terendah); ' +
         // Y already held the lowest Behavior in P and still does in C, so only
         // its distance to the (new, higher) best value moved: 0,01778 → 0,0576.

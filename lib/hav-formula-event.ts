@@ -4,7 +4,6 @@ import { and, eq, lte, sql } from 'drizzle-orm';
 
 import { db } from '@/lib/db';
 import * as schema from '@/lib/db/schema';
-import { decryptOrNull, encryptIfEnabled, ensureUnlocked } from '@/lib/crypto/key-store';
 import { HAV_SOURCE_LABEL, resolveEffectiveHav, type EffectiveHav } from '@/lib/hav-effective';
 import { loadHavFormulaPins, loadManualHavQuadrants } from '@/lib/hav-placements';
 import { normalizeHavQuadrant } from '@/lib/hav-quadrant';
@@ -21,7 +20,7 @@ import { normalizeHavQuadrant } from '@/lib/hav-quadrant';
  *   - `candidates.hav_auto_changed_at = now()` makes every placement made
  *     before it stop applying (the readers' clock predicate), and the placement
  *     row is deleted here, in the same transaction, like a sync supersedes one;
- *   - a 'hav16' trail row says what happened, sealed like the rest.
+ *   - a 'hav16' trail row says what happened.
  *
  * The sync-side twin is sync-service hav-supersede.ts (PA/BA uploads and MSSQL
  * syncs). Every timestamp is the database's `now()`, because placements are
@@ -52,7 +51,7 @@ async function schemaShape(): Promise<{ clock: boolean; tier: boolean }> {
 }
 
 /**
- * The HAV in force for one candidate RIGHT NOW, from already-decrypted inputs:
+ * The HAV in force for one candidate RIGHT NOW, from the given inputs:
  * what a reader sees before the event. Read before the write.
  */
 export async function currentEffectiveHav(input: {
@@ -61,7 +60,6 @@ export async function currentEffectiveHav(input: {
   performanceGrade: string | null;
   behaviorRecommendation: string | null;
 }): Promise<EffectiveHav> {
-  await ensureUnlocked();
   const [manual, pins] = await Promise.all([
     loadManualHavQuadrants([input.candidateId]),
     loadHavFormulaPins([input.candidateId]),
@@ -88,7 +86,7 @@ export type HavFormulaEventInput = {
   username: string | null;
 };
 
-function describe(input: HavFormulaEventInput, displaced: number | null | 'unreadable'): string {
+function describe(input: HavFormulaEventInput, displaced: string | null): string {
   const head =
     input.origin === 'hav_formula'
       ? 'Tombol "Hitung kuadran HAV" di Kandidat menempatkan HAV menurut rumus PA × BA'
@@ -99,8 +97,7 @@ function describe(input: HavFormulaEventInput, displaced: number | null | 'unrea
       : 'belum ada';
   const line = `${head}: ${was} → Q${input.formulaQuadrant} (${HAV_SOURCE_LABEL.formula}).`;
   if (displaced == null) return line;
-  const label = displaced === 'unreadable' ? '(tidak terbaca)' : `Q${displaced}`;
-  return `${line} Perubahan ini terjadi SETELAH penempatan manual ${label}, dan menurut aturan urutan waktu yang terbaru yang berlaku — penempatan manual itu digantikan.`;
+  return `${line} Perubahan ini terjadi SETELAH penempatan manual Q${displaced}, dan menurut aturan urutan waktu yang terbaru yang berlaku — penempatan manual itu digantikan.`;
 }
 
 /**
@@ -114,12 +111,8 @@ export async function recordFormulaHavEvent(tx: Tx, input: HavFormulaEventInput)
   const shape = await schemaShape();
   if (!shape.clock) return { superseded: false };
 
-  // Sealed before any row is touched: a locked app refuses here, and the
-  // transaction then rolls the PA/BA edit back rather than leaving it unlogged.
-  const [sealedOld, sealedNew] = await Promise.all([
-    encryptIfEnabled(input.before.quadrant != null ? String(input.before.quadrant) : null),
-    encryptIfEnabled(String(input.formulaQuadrant)),
-  ]);
+  const oldQuadrant = input.before.quadrant != null ? String(input.before.quadrant) : null;
+  const newQuadrant = String(input.formulaQuadrant);
 
   await tx
     .update(schema.candidates)
@@ -136,26 +129,23 @@ export async function recordFormulaHavEvent(tx: Tx, input: HavFormulaEventInput)
     .delete(placements)
     .where(and(eq(placements.candidateId, input.candidateId), lte(placements.updatedAt, sql`now()`)))
     .returning({ quadrant: placements.quadrant });
-  const displacedSealed = removed[0]?.quadrant ?? null;
-  const displacedOpen =
-    displacedSealed != null ? normalizeHavQuadrant(decryptOrNull(displacedSealed).value) : null;
-  const displaced: number | null | 'unreadable' =
-    displacedSealed == null ? null : displacedOpen ? Number(displacedOpen) : 'unreadable';
+  const displacedRaw = removed[0]?.quadrant ?? null;
+  const displaced = displacedRaw != null ? normalizeHavQuadrant(displacedRaw) || displacedRaw : null;
 
   const visible =
     input.before.quadrant !== input.formulaQuadrant || input.before.source !== 'formula';
   if (displaced == null && !visible && input.origin !== 'hav_formula') return { superseded: false };
 
-  const why = await encryptIfEnabled(describe(input, displaced));
+  const why = describe(input, displaced);
   await tx.insert(schema.talentAuditLogs).values({
     tenantId: input.tenantId,
     employeeId: (input.employeeId ?? '').slice(0, 20),
     candidateId: input.candidateId,
     mappingKind: 'hav16',
     action: displaced != null ? 'superseded_by_formula' : 'formula_applied',
-    oldQuadrant: displacedSealed ?? sealedOld,
-    newQuadrant: sealedNew,
-    baselineQuadrant: sealedNew,
+    oldQuadrant: displacedRaw ?? oldQuadrant,
+    newQuadrant,
+    baselineQuadrant: newQuadrant,
     baselineSource: 'formula',
     justificationReason: why,
     changedByUserId: input.actorId,

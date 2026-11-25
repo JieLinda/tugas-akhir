@@ -28,13 +28,7 @@ import { db } from '@/lib/db';
 import * as schema from '@/lib/db/schema';
 import { listProgramTemplates } from '@/lib/programs';
 import { getTalentPoolData } from '@/lib/talent-pool-data';
-import { getCurrentTenant, getCurrentTenantId, TENANTS } from '@/lib/tenant';
-import {
-  decryptCandidateRow,
-  decryptCandidateDetailsSnapshot,
-  decryptCandidateRows,
-  decryptCandidateValue,
-} from '@/lib/candidate-crypto';
+import { getCurrentTenant, getCurrentTenantId, tenantNameMap } from '@/lib/tenant';
 import type { HavSource } from '@/lib/hav-effective';
 import { withEffectiveHav } from '@/lib/hav-placements';
 import { isDemoMode } from '@/lib/app-mode';
@@ -49,8 +43,6 @@ import {
   type TalentBox,
 } from '@/lib/hav-quadrant-derive';
 import { demoInitialsById } from '@/lib/demo/names';
-
-const TENANT_NAME_BY_ID = new Map(TENANTS.map((t) => [t.id, t.name]));
 
 function normalizeStatus(status: string | null): PositionSummary['status'] {
   if (status === 'review' || status === 'draft') return status;
@@ -130,9 +122,7 @@ function normalizeProgramCode(code: string): ProgramCode | null {
 function parseCandidateDetails(details: string | null): PositionCandidate | null {
   if (!details) return null;
   try {
-    // The stored snapshot may hold encrypted person fields for runs finalized
-    // before/when the key was unavailable — decrypt them for display.
-    return decryptCandidateDetailsSnapshot(JSON.parse(details) as PositionCandidate);
+    return JSON.parse(details) as PositionCandidate;
   } catch {
     return null;
   }
@@ -199,9 +189,9 @@ function buildTopCandidatePreview(
   fallbackName: string | null = null,
 ) {
   const parsed = parseCandidateDetails(details);
-  // Older runs can carry a snapshot with a null/undecryptable name (written
-  // while the key was unavailable). Fall back to the live candidates row so the
-  // top-candidate list on /positions never shows an anonymous blank.
+  // Older runs can carry a snapshot with a null name. Fall back to the live
+  // candidates row so the top-candidate list on /positions never shows an
+  // anonymous blank.
   const name = parsed?.name || fallbackName;
   if (!parsed && !name) return null;
 
@@ -214,7 +204,7 @@ function buildTopCandidatePreview(
   };
 }
 
-/** Decrypted candidate names keyed by candidate id, for snapshot-name fallback. */
+/** Candidate names keyed by candidate id, for snapshot-name fallback. */
 async function getCandidateNameMap(ids: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   if (ids.length === 0) return map;
@@ -223,7 +213,7 @@ async function getCandidateNameMap(ids: string[]): Promise<Map<string, string>> 
     .from(schema.candidates)
     .where(and(inArray(schema.candidates.id, ids), isNull(schema.candidates.deletedAt)));
   for (const r of rows) {
-    if (r.name) map.set(r.id, decryptCandidateValue(r.name) ?? 'Kandidat');
+    if (r.name) map.set(r.id, r.name);
   }
   return map;
 }
@@ -591,12 +581,11 @@ export async function getCandidateLookup(): Promise<CandidateLookupItem[]> {
     })
     .from(schema.candidates)
     .where(and(eq(schema.candidates.tenantId, tenantId), liveCandidate()));
-  // name is encrypted at rest, so ORDER BY must happen after decryption.
   const demo = await isDemoMode();
-  const decrypted = (await forCurrentMode(decryptCandidateRows(rows), (r) => r.id, { onlyOn: false })).sort((a, b) =>
+  const sorted = (await forCurrentMode(rows, (r) => r.id, { onlyOn: false })).sort((a, b) =>
     (a.name ?? '').localeCompare(b.name ?? ''),
   );
-  return decrypted.map((r) => ({
+  return sorted.map((r) => ({
     id: r.id,
     name: r.name,
     employeeId: demo ? MASKED_NPK : r.employeeId ?? '',
@@ -623,8 +612,9 @@ export async function getCandidateBusinessUnits(
     .from(schema.candidates)
     .where(inArray(schema.candidates.id, candidateIds));
   const map: Record<string, string> = {};
+  const tenantNames = await tenantNameMap();
   for (const r of rows) {
-    const name = TENANT_NAME_BY_ID.get(r.tenantId);
+    const name = tenantNames.get(r.tenantId);
     if (name) map[r.id] = name;
   }
   return map;
@@ -717,7 +707,7 @@ async function getSuccessorSeatsByCandidate(
       asc(schema.positionPicks.rank),
     );
 
-  const tenantName = new Map(TENANTS.map((t) => [t.id, t.name]));
+  const tenantName = await tenantNameMap();
   const byCandidate = new Map<string, Map<string, CandidateSuccessorSeat>>();
   for (const row of rows) {
     const seats = byCandidate.get(row.candidateId) ?? new Map<string, CandidateSuccessorSeat>();
@@ -805,7 +795,7 @@ export async function getCandidateById(id: string): Promise<CandidateProfile | n
   const demo = await isDemoMode();
   const demoCopy = demo ? (await loadDemoCopies([row.id])).get(row.id) ?? null : null;
   const demoOn = demo ? (await loadDemoOnIds([row.id])).has(row.id) : false;
-  const decrypted = demo ? presentCandidateRowForDemo(decryptCandidateRow(row), demoCopy) : decryptCandidateRow(row);
+  const shown = demo ? presentCandidateRowForDemo(row, demoCopy) : row;
 
   const [technicalRows, historyRows, gradeLevelMap] = await Promise.all([
     db
@@ -840,7 +830,7 @@ export async function getCandidateById(id: string): Promise<CandidateProfile | n
     getGradeLevelMap(tenantId),
   ]);
 
-  const [withHav] = await withEffectiveHav([decrypted]);
+  const [withHav] = await withEffectiveHav([shown]);
   const profile = mapCandidateRowToProfile(
     withHav!,
     demoCopy?.technicalCompetencies ? demoCompetencyRows(row.id, demoCopy.technicalCompetencies) : technicalRows,
@@ -949,7 +939,6 @@ async function loadPositionIncumbentProfile(positionId: string): Promise<Incumbe
 
   if (!row) return { name, employeeId: rawEid, profile: null };
 
-  const decrypted = decryptCandidateRow(row);
 
   const [technicalRows, historyRows, gradeLevelMap] = await Promise.all([
     db
@@ -984,10 +973,10 @@ async function loadPositionIncumbentProfile(positionId: string): Promise<Incumbe
     getGradeLevelMap(tenantId),
   ]);
 
-  const [shown] = await forCurrentMode([decrypted], (c) => c.id, { onlyOn: false });
+  const [shown] = await forCurrentMode([row], (c) => c.id, { onlyOn: false });
   const [withHav] = await withEffectiveHav([shown!]);
   const profile = mapCandidateRowToProfile(withHav!, technicalRows, historyRows, gradeLevelMap);
-  return { name: shown!.name, employeeId: decrypted.employeeId ?? rawEid, profile };
+  return { name: shown!.name, employeeId: row.employeeId ?? rawEid, profile };
 }
 
 export type CandidateRunHistoryEntry = {
@@ -1145,11 +1134,10 @@ async function buildCandidateProfiles(
 ): Promise<{ candidates: CandidateProfile[]; total: number }> {
   const gradeLevelMap = await getGradeLevelMap(tenantId);
 
-  // The columns this list searches, filters and sorts on — name, department,
-  // current_position, grade — are encrypted at rest, so none of that can run in
-  // SQL. Fetch the tenant's rows, decrypt, then apply search / filter / sort /
-  // pagination in the application layer. Candidate counts per tenant are small
-  // enough (hundreds) that loading the live set is not a problem.
+  // Fetch the tenant's rows, then apply search / filter / sort / pagination in
+  // the application layer (demo copies must be applied before any of it).
+  // Candidate counts per tenant are small enough (hundreds) that loading the
+  // live set is not a problem.
   const whereConditions = [eq(schema.candidates.tenantId, tenantId)];
   if (liveOnly) {
     whereConditions.push(liveCandidate());
@@ -1160,7 +1148,7 @@ async function buildCandidateProfiles(
     .from(schema.candidates)
     .where(and(...whereConditions));
 
-  let filtered = decryptCandidateRows(rows);
+  let filtered = rows;
 
   // Demo mode: every candidate as its demo copy (lib/demo/), photos removed —
   // BEFORE search/filter/sort, so the list searches what it shows. OFF
@@ -1434,13 +1422,7 @@ export async function getMasterPositions(): Promise<MasterPosition[]> {
     description: row.description,
     currentHolder: row.holderName
       ? {
-          // holderName may come from candidates (encrypted) or sync_employees
-          // (plaintext); decryptCandidateValue passes plaintext through and
-          // returns null for a sealed value it cannot open (a locked app). The
-          // holder is KEPT — its employeeId is what excludes the incumbent from
-          // their own pool — and the unreadable name stays falsy, which is what
-          // every reader already treats as "no name".
-          name: decryptCandidateValue(row.holderName) ?? '',
+          name: row.holderName ?? '',
           employeeId: demo ? MASKED_NPK : row.holderEmployeeId ?? '',
           since: row.holderSince,
         }
@@ -1593,9 +1575,8 @@ async function getHoldersByPosition(
     .where(inArray(schema.criticalPositionHolders.positionId, positionIds))
     .orderBy(desc(schema.criticalPositionHolders.isPrimary), asc(schema.criticalPositionHolders.employeeId));
 
-  // Age + level for the retirement flag. Both live on the candidate row (birth
-  // date and grade are encrypted, so they are decrypted here and compared in
-  // the app), and the level name comes from the tenant's grade ladder.
+  // Age + level for the retirement flag. Both live on the candidate row, and
+  // the level name comes from the tenant's grade ladder.
   const employeeIds = Array.from(new Set(rows.map((r) => r.employeeId).filter(Boolean)));
   const holderFacts = new Map<string, { age: number | null; levelName: string | null }>();
   if (employeeIds.length > 0) {
@@ -1628,10 +1609,10 @@ async function getHoldersByPosition(
     for (const row of candidateRows) {
       const key = String(row.employeeId ?? '').replace(/^0+/, '');
       if (!key) continue;
-      const grade = decryptCandidateValue(row.grade);
+      const grade = row.grade;
       const gradeNumber = parseInt(String(grade ?? '').replace(/[^0-9]/g, ''), 10);
       holderFacts.set(key, {
-        age: candidateAge(decryptCandidateValue(row.birthDate)),
+        age: candidateAge(row.birthDate || null),
         levelName: Number.isFinite(gradeNumber) ? levelByGrade.get(gradeNumber) ?? null : null,
       });
     }
@@ -2101,7 +2082,7 @@ export async function getPositionManagementPage(
     bucket.push({
       pickId: pick.pickId,
       candidateId: pick.candidateId,
-      name: decryptCandidateValue(pick.name) ?? 'Kandidat',
+      name: pick.name || 'Kandidat',
       programCode: pick.programCode,
       score: pick.score,
       readiness: pick.readiness,
@@ -2566,10 +2547,9 @@ export async function getDashboardOverview(): Promise<DashboardOverviewType> {
     // A failure here must not take the dashboard down: it degrades to 0.
     getTalentPoolData().catch(() => null),
   ]);
-  // hav_quadrant / department are encrypted at rest. The HAV is then the one in
-  // force (manual > upload > formula, lib/hav-effective.ts).
+  // The HAV is the one in force (manual > upload > formula, lib/hav-effective.ts).
   // Demo mode: only ON candidates, as their demo copy (lib/demo/).
-  const candidates = await withEffectiveHav(await forCurrentMode(decryptCandidateRows(candidatesRaw), (c) => c.id, { onlyOn: true }));
+  const candidates = await withEffectiveHav(await forCurrentMode(candidatesRaw, (c) => c.id, { onlyOn: true }));
 
   const readinessBands = [
     {
@@ -2854,12 +2834,10 @@ export async function getCandidateLevelOptions(): Promise<CandidateLevelOption[]
     getGradeLevelMap(tenantId),
   ]);
 
-  // grade is encrypted at rest, so DISTINCT ran over ciphertext — decrypt and
-  // dedupe before use so each level's grades collapse to their real values.
   const seenGrades = new Set<string>();
   const distinctGrades: string[] = [];
   for (const r of rows) {
-    const grade = decryptCandidateValue(r.grade);
+    const grade = r.grade;
     if (grade == null || grade === '') continue;
     if (seenGrades.has(grade)) continue;
     seenGrades.add(grade);
@@ -2904,11 +2882,9 @@ async function getGradesForLevel(
       ),
     );
   const grades: string[] = [];
-  // grade is encrypted at rest; DISTINCT ran over ciphertext, so decrypt and
-  // dedupe before matching against the level map.
   const seen = new Set<string>();
   for (const r of rows) {
-    const grade = decryptCandidateValue(r.grade)?.trim();
+    const grade = r.grade?.trim();
     if (!grade || seen.has(grade)) continue;
     seen.add(grade);
     if (gradeLevelMap.get(normalizeGradeKey(grade) ?? '') === level) grades.push(grade);

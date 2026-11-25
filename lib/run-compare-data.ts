@@ -13,8 +13,6 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { isDemoSql } from '@/lib/demo/run-mode';
 import * as schema from '@/lib/db/schema';
-import { ensureUnlocked } from '@/lib/crypto/key-store';
-import { decryptCandidateRows } from '@/lib/candidate-crypto';
 import { isDemoMode } from '@/lib/app-mode';
 import { maskNpk } from '@/lib/app-mode-shared';
 import { forCurrentMode } from '@/lib/demo/store';
@@ -48,7 +46,6 @@ export async function loadRunRecord(runId: string, tenantId: string): Promise<Ru
   `);
   const run = (runRes.rows as any[])[0];
   if (!run) return null;
-  await ensureUnlocked().catch(() => false);
 
   // Lineage, root → this, tenant-scoped.
   const chainRes = await db.execute(sql`
@@ -105,18 +102,16 @@ export async function loadRunRecord(runId: string, tenantId: string): Promise<Ru
   const resultById = new Map(resultRows.map((r) => [r.candidateId, r]));
   const ids = [...new Set([...poolRows.map((r) => r.candidateId), ...resultRows.map((r) => r.candidateId)])];
   const candRows = ids.length
-    ? decryptCandidateRows(
-        await db
-          .select({
-            id: schema.candidates.id,
-            name: schema.candidates.name,
-            tenantId: schema.candidates.tenantId,
-            employeeId: schema.candidates.employeeId,
-            deletedAt: schema.candidates.deletedAt,
-          })
-          .from(schema.candidates)
-          .where(inArray(schema.candidates.id, ids)),
-      )
+    ? await db
+        .select({
+          id: schema.candidates.id,
+          name: schema.candidates.name,
+          tenantId: schema.candidates.tenantId,
+          employeeId: schema.candidates.employeeId,
+          deletedAt: schema.candidates.deletedAt,
+        })
+        .from(schema.candidates)
+        .where(inArray(schema.candidates.id, ids))
     : [];
   // Demo mode names each candidate by their demo copy (lib/demo/); no NPK leaves.
   const demoView = await isDemoMode();

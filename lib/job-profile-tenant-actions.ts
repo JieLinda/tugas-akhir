@@ -18,7 +18,7 @@ import { db } from '@/lib/db';
 import { logAudit } from '@/lib/audit';
 import { ensureLocalUser } from '@/lib/pulse-data';
 import { requirePermission } from '@/lib/rbac';
-import { TENANTS, getCurrentTenantId } from '@/lib/tenant';
+import { getCurrentTenantId, liveTenantIdSet, tenantNameMap } from '@/lib/tenant';
 
 /**
  * Set which tenant(s) own a document, replacing whatever was assigned before.
@@ -31,8 +31,8 @@ export async function setJobProfileTenantsAction(
 ): Promise<{ success: boolean; error?: string }> {
   await requirePermission('job_profiles.manage');
 
-  const valid = TENANTS.map((t) => t.id);
-  const wanted = Array.from(new Set(tenantIds.filter((id) => valid.includes(id))));
+  const valid = await liveTenantIdSet();
+  const wanted = Array.from(new Set(tenantIds.filter((id) => valid.has(id))));
 
   try {
     await db.transaction(async (tx) => {
@@ -52,7 +52,7 @@ export async function setJobProfileTenantsAction(
     return { success: false, error: 'Gagal menyimpan pemetaan Company.' };
   }
 
-  const [tenantId, actorId] = await Promise.all([getCurrentTenantId(), ensureLocalUser()]);
+  const [tenantId, actorId, tenantNames] = await Promise.all([getCurrentTenantId(), ensureLocalUser(), tenantNameMap()]);
   await logAudit({
     tenantId,
     actorId,
@@ -63,7 +63,7 @@ export async function setJobProfileTenantsAction(
       wanted.length === 0
         ? `Pemetaan Company dokumen job profile ${jobProfileId} dihapus (tampil di semua Company)`
         : `Dokumen job profile ${jobProfileId} dipetakan ke ${wanted
-            .map((id) => TENANTS.find((t) => t.id === id)?.name ?? id)
+            .map((id) => tenantNames.get(id) ?? id)
             .join(', ')}`,
   });
 

@@ -31,6 +31,25 @@ export type TopsisDetail = TopsisResult & {
   /** (v_ij − ideal⁺_j)² and (v_ij − ideal⁻_j)²: criterion j's share of D⁺ / D⁻ before the root. */
   contribPlus: number[][];
   contribMinus: number[][];
+  /**
+   * Anchored mode only: v_ij fell outside [A⁻_j, A⁺_j] of the anchors and was
+   * clamped onto the nearer bound. All false in classic mode.
+   */
+  clamped: boolean[][];
+  /** True when the divisors and ideals came from `anchors`, not from the matrix. */
+  anchored: boolean;
+};
+
+/**
+ * A frozen TOPSIS yardstick: the divisor and the weighted ideals per criterion,
+ * in the matrix's column order. "Tambah Kandidat Pembanding" ranks a child
+ * against its PARENT's yardstick instead of re-deriving one from a set that now
+ * includes the added candidates (see `topsisDetailed`).
+ */
+export type TopsisAnchors = {
+  colNorms: number[];
+  idealPos: number[];
+  idealNeg: number[];
 };
 
 /**
@@ -43,11 +62,21 @@ export type TopsisDetail = TopsisResult & {
  * `matrix` is alternatives × criteria; `weights` must sum to 1 and match the
  * criteria count; `types` marks each criterion as benefit (higher is better) or
  * cost (lower is better).
+ *
+ * `anchors` switches to ANCHORED mode: the divisors and both ideals are taken as
+ * given instead of being derived from `matrix`, and each weighted value is
+ * clamped into [A⁻_j, A⁺_j] — a value beyond the frozen ideal counts AS the
+ * ideal, never as a distance from it. Classic TOPSIS is set-relative (every
+ * divisor and both ideals move when an alternative is added, so already-ranked
+ * alternatives can swap places — rank reversal). Anchored, a row whose values
+ * lie inside the anchors' range gets exactly the v, D⁺, D⁻ and closeness it got
+ * when the anchors were measured: the same operations on the same doubles.
  */
 export function topsisDetailed(
   matrix: number[][],
   weights: number[],
-  types: ("benefit" | "cost")[]
+  types: ("benefit" | "cost")[],
+  anchors?: TopsisAnchors | null
 ): TopsisDetail {
   const m = matrix.length;
   const n = weights.length;
@@ -63,28 +92,59 @@ export function topsisDetailed(
       idealNeg: [],
       contribPlus: [],
       contribMinus: [],
+      clamped: [],
+      anchored: Boolean(anchors),
     };
   }
+  if (
+    anchors &&
+    (anchors.colNorms.length !== n || anchors.idealPos.length !== n || anchors.idealNeg.length !== n)
+  ) {
+    throw new Error(`Jangkar TOPSIS berisi ${anchors.colNorms.length} kriteria, matriksnya ${n}.`);
+  }
 
-  // 1. Vector normalization: r_ij = x_ij / sqrt(Σ_i x_ij²)
-  const colNorms = Array.from({ length: n }, (_, j) => {
-    let sumSq = 0;
-    for (let i = 0; i < m; i++) sumSq += (matrix[i]![j] ?? 0) ** 2;
-    return Math.sqrt(sumSq) || 1e-9;
-  });
+  // 1. Vector normalization: r_ij = x_ij / sqrt(Σ_i x_ij²) — or the frozen divisor.
+  const colNorms = anchors
+    ? [...anchors.colNorms]
+    : Array.from({ length: n }, (_, j) => {
+        let sumSq = 0;
+        for (let i = 0; i < m; i++) sumSq += (matrix[i]![j] ?? 0) ** 2;
+        return Math.sqrt(sumSq) || 1e-9;
+      });
 
   // 2. Weighted normalized matrix: v_ij = w_j · r_ij, computed as (w·x)/norm —
   //    that operation order is what every stored closeness was produced with.
-  const v = matrix.map((row) =>
-    row.map((x, j) => (weights[j]! * x) / colNorms[j]!)
+  //    Anchored: clamped into the frozen [A⁻, A⁺] (a no-op inside the range).
+  const clamped: boolean[][] = matrix.map((row) => row.map(() => false));
+  const v = matrix.map((row, i) =>
+    row.map((x, j) => {
+      const raw = (weights[j]! * x) / colNorms[j]!;
+      if (!anchors) return raw;
+      const lo = Math.min(anchors.idealPos[j]!, anchors.idealNeg[j]!);
+      const hi = Math.max(anchors.idealPos[j]!, anchors.idealNeg[j]!);
+      if (raw > hi) {
+        clamped[i]![j] = true;
+        return hi;
+      }
+      if (raw < lo) {
+        clamped[i]![j] = true;
+        return lo;
+      }
+      return raw;
+    })
   );
   // r_ij itself, for display only (never fed back into v).
   const normalized = matrix.map((row) => row.map((x, j) => x / colNorms[j]!));
 
-  // 3. Ideal positive / negative per criterion
+  // 3. Ideal positive / negative per criterion — or the frozen ones.
   const idealPos: number[] = [];
   const idealNeg: number[] = [];
   for (let j = 0; j < n; j++) {
+    if (anchors) {
+      idealPos.push(anchors.idealPos[j]!);
+      idealNeg.push(anchors.idealNeg[j]!);
+      continue;
+    }
     const col = v.map((row) => row[j]!);
     if (types[j] === "cost") {
       idealPos.push(Math.min(...col));
@@ -135,6 +195,8 @@ export function topsisDetailed(
     idealNeg,
     contribPlus,
     contribMinus,
+    clamped,
+    anchored: Boolean(anchors),
   };
 }
 

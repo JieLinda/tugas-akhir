@@ -1,12 +1,9 @@
 import { redirect } from 'next/navigation';
 import { SidebarNav } from '@/components/sidebar-nav';
 import { ActivityThreadProvider } from '@/components/activity-thread';
-import { EncryptionLockScreen } from '@/components/encryption-lock-screen';
-import { getCurrentTenant } from '@/lib/tenant';
+import { getCurrentTenant, listTenants } from '@/lib/tenant';
 import { getCurrentUser } from '@/lib/auth';
 import { getCurrentUserAccess, recordUserLogin } from '@/lib/rbac';
-import { isLocked } from '@/lib/crypto/key-store';
-import { describeMasterKeyCustody } from '@/lib/crypto/master-key-file';
 import { getAppMode } from '@/lib/app-mode';
 import { AppModeProvider } from '@/components/app-mode-provider';
 
@@ -43,16 +40,7 @@ export default async function DashboardLayout({
   }
   const permissions = Array.from(access.permissions);
 
-  // Encryption gate: an initialised-but-locked app is unusable by design.
-  // Replacing the whole shell with an unlock prompt means no page can read
-  // degraded values or hit the "writes refused" state piecemeal — the operator
-  // pastes the master key once and the layout re-renders the app.
-  if (await isLocked()) {
-    const custody = describeMasterKeyCustody();
-    return <EncryptionLockScreen keyFilePath={custody.path} />;
-  }
-
-  const tenant = await getCurrentTenant();
+  const [tenant, tenants] = await Promise.all([getCurrentTenant(), listTenants()]);
   // Demo vs real ("asli"): switched only by the ?mode= keyword (proxy.ts) and
   // never shown — the provider renders nothing, it only lets components mask.
   const mode = await getAppMode();
@@ -60,7 +48,11 @@ export default async function DashboardLayout({
   return (
     <AppModeProvider mode={mode}>
     <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(234,88,12,0.08),transparent_34%),linear-gradient(135deg,rgba(248,250,252,0.96),rgba(241,245,249,0.72))] dark:bg-[radial-gradient(circle_at_top_left,rgba(234,88,12,0.12),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.98),rgba(30,41,59,0.9))]">
-      <SidebarNav tenantSlug={tenant.slug} permissions={permissions} />
+      <SidebarNav
+        tenantSlug={tenant.slug}
+        tenants={tenants.map((t) => ({ id: t.id, slug: t.slug, name: t.name, isBuiltin: t.isBuiltin }))}
+        permissions={permissions}
+      />
       {/* Keyed by tenant so switching business units tears the thread state down
           rather than carrying another tenant's entity labels across. */}
       <ActivityThreadProvider key={tenant.slug} tenantSlug={tenant.slug}>

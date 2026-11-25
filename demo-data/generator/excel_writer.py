@@ -80,8 +80,13 @@ class Book:
 @dataclass
 class Options:
     as_of: date
-    company: str | None = None  # fills COMPANY_ID when given
-    kamus_demo_codes: bool = False  # fills TECHNICAL_ID with TC 9xx when set
+    company: str | None = "DEMO"  # COMPANY_ID written in every row; None leaves the cells blank (yellow)
+    kamus_demo_codes: bool = True  # TECHNICAL_ID = the demo kamus codes TC 901-TC 914; False leaves them blank
+
+
+# The options the books are being built with — read by the shared instruction
+# fragments below, so a guide sheet describes the values actually written.
+_ACTIVE: Options | None = None
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────
@@ -102,10 +107,18 @@ def yn(flag: bool) -> str:
     return "Y" if flag else "N"
 
 
-COMPANY_NOTE = (
-    "ISI DARI DATABASE ANDA: Company ID yang AKTIF di Sinkronisasi -> Pemetaan Company ID -> Company "
-    "(tabel sync_company_tenant_map). Sama untuk SEMUA baris dan SEMUA berkas."
-)
+def company_note() -> str:
+    company = _ACTIVE.company if _ACTIVE else None
+    if company:
+        return (
+            f"Terisi '{company}'. Agar data masuk ke sebuah Company, Company ID ini harus AKTIF di "
+            "Tambah Data -> Pemetaan Company ID -> Company (tabel sync_company_tenant_map). Sama untuk "
+            "SEMUA baris dan SEMUA berkas; huruf besar/kecil tidak berpengaruh."
+        )
+    return (
+        "ISI DARI DATABASE ANDA: Company ID yang AKTIF di Tambah Data -> Pemetaan Company ID -> Company "
+        "(tabel sync_company_tenant_map). Sama untuk SEMUA baris dan SEMUA berkas."
+    )
 
 
 def company_cell(opts: Options) -> str | None:
@@ -113,7 +126,9 @@ def company_cell(opts: Options) -> str | None:
 
 
 def mark_company(sheet_rows: list[dict[str, Any]], marks: dict) -> None:
-    """COMPANY_ID is yellow on every row, filled or not: it is the one value that must come from YOUR mapping."""
+    """COMPANY_ID is yellow only while blank: then it is the one value that must come from YOUR mapping."""
+    if _ACTIVE and _ACTIVE.company:
+        return
     for i, _ in enumerate(sheet_rows):
         marks[(i, "COMPANY_ID")] = REQUIRED_FK
 
@@ -239,21 +254,36 @@ def common_header(title: str, tile: str, purpose: list[str]) -> list[str]:
         "## Arti warna sel",
         "[KUNING] Wajib diisi dengan nilai dari DATABASE ANDA sebelum diunggah (sengaja dikosongkan).",
         "[JINGGA] Opsional — boleh diisi dengan nilai dari database Anda, boleh dibiarkan kosong.",
-        f"Sel lain sudah terisi data fiktif yang saling cocok antar-berkas (NPK {first}-{last}, posisi DM...).",
+        f"Sel lain sudah terisi data fiktif yang saling cocok antar-berkas (NPK {first}-{last}, posisi DM...,"
+        + (f" Company ID {_ACTIVE.company}" if _ACTIVE and _ACTIVE.company else "")
+        + (", kode kamus TC 901-TC 914" if _ACTIVE and _ACTIVE.kamus_demo_codes else "") + ").",
         "",
     ]
 
 
-COMPANY_FILL_LINES = [
-    "## Mengisi COMPANY_ID (kuning)",
-    "Pakai SATU Company ID yang sudah aktif di Sinkronisasi -> 'Pemetaan Company ID -> Company'.",
-    "Disarankan membuat pemetaan khusus demo, mis. Company ID 'DEMO' -> Company tujuan, supaya data",
-    "demo terpisah dari company asli. Cari nilainya dengan:",
-    "    SELECT company_id, tenant_id, label FROM sync_company_tenant_map WHERE is_active;",
-    "Cara cepat di Excel: blok semua sel kuning di kolom COMPANY_ID, ketik kodenya, tekan Ctrl+Enter.",
-    "Gunakan Company ID yang SAMA di kesepuluh berkas yang punya kolom COMPANY_ID (01-10).",
-    "",
-]
+def company_fill_lines() -> list[str]:
+    company = _ACTIVE.company if _ACTIVE else None
+    if company:
+        return [
+            f"## COMPANY_ID = {company}",
+            f"Semua baris di kesepuluh berkas ber-COMPANY_ID (01-10) memakai '{company}'. Sebelum mengunggah, buat",
+            f"pemetaan Company ID '{company}' -> Company tujuan di Tambah Data -> 'Pemetaan Company ID -> Company'.",
+            "Company tujuan boleh Company bawaan (Mulia/MSO/ERRO) atau Company yang Anda tambahkan sendiri lewat",
+            "tanda + di dropdown Company. Tanpa pemetaan, baris tetap tersimpan tetapi tidak tampil di Company mana",
+            "pun — unggahan menampilkan peringatan untuk itu.",
+            "Memakai Company ID lain: buat ulang berkas dengan generator (--company KODE, lihat README).",
+            "",
+        ]
+    return [
+        "## Mengisi COMPANY_ID (kuning)",
+        "Pakai SATU Company ID yang sudah aktif di Tambah Data -> 'Pemetaan Company ID -> Company'.",
+        "Disarankan membuat pemetaan khusus demo, mis. Company ID 'DEMO' -> Company tujuan, supaya data",
+        "demo terpisah dari company asli. Cari nilainya dengan:",
+        "    SELECT company_id, tenant_id, label FROM sync_company_tenant_map WHERE is_active;",
+        "Cara cepat di Excel: blok semua sel kuning di kolom COMPANY_ID, ketik kodenya, tekan Ctrl+Enter.",
+        "Gunakan Company ID yang SAMA di kesepuluh berkas yang punya kolom COMPANY_ID (01-10).",
+        "",
+    ]
 
 
 def footer(order_note: str, expected: str) -> list[str]:
@@ -274,7 +304,7 @@ def footer(order_note: str, expected: str) -> list[str]:
 
 def employees_book(opts: Options) -> Book:
     cols = [
-        Column("COMPANY_ID", 14, note=COMPANY_NOTE),
+        Column("COMPANY_ID", 14, note=company_note()),
         Column("EMPLOYEE_ID", 14, note="NPK fiktif 99001-99046."),
         Column("DISPLAY_NAME", 28),
         Column("GRADE_ID", 10, note="Grade 1-13 sesuai tangga di berkas 02-level-grade.xlsx."),
@@ -317,12 +347,11 @@ def employees_book(opts: Options) -> Book:
         [f"{len(rows)} karyawan fiktif di 5 divisi dan 8 departemen. Berkas inilah sumber NPK yang dipakai",
          "semua berkas lain. Division head sengaja tidak punya departemen (kolom departemen kosong = wajar)."],
     ) + [
-        "## PENTING — COMPANY_ID di berkas ini tidak divalidasi",
-        "Di sumber Data Karyawan, COMPANY_ID BUKAN kolom wajib: baris dengan COMPANY_ID kosong TETAP masuk,",
-        "tetapi dengan company kosong sehingga tidak pernah menjadi kandidat. Isi dulu sebelum mengunggah.",
-        "Mengunggah berkas ber-COMPANY_ID kosong SETELAH versi yang benar juga mengosongkan company mereka.",
+        "## COMPANY_ID wajib",
+        "Baris tanpa COMPANY_ID dilewati dan disebut di pesan unggahan: karyawan tanpa company tidak pernah",
+        "menjadi kandidat di Company mana pun.",
         "",
-        *COMPANY_FILL_LINES,
+        *company_fill_lines(),
         "## Cek NPK bentrok (sebelum unggah)",
         f"Kunci baris sumber ini hanya EMPLOYEE_ID. Pastikan NPK {first}-{last} belum dipakai karyawan asli:",
         f"    SELECT employee_id, display_name FROM sync_employees WHERE employee_id BETWEEN '{first}' AND '{last}';",
@@ -339,7 +368,7 @@ def employees_book(opts: Options) -> Book:
 
 def grade_levels_book(opts: Options) -> Book:
     cols = [
-        Column("COMPANY_ID", 14, note=COMPANY_NOTE),
+        Column("COMPANY_ID", 14, note=company_note()),
         Column("LEVEL_ID", 12),
         Column("LEVEL_NAME", 20),
         Column("GRADE_ID", 10),
@@ -357,7 +386,7 @@ def grade_levels_book(opts: Options) -> Book:
          "(tanpa grade 11, seperti tangga asli). Nama level dipakai aplikasi untuk ambang pensiun dan rentang",
          "suksesor 'Tambah massal', jadi nama level di sini sengaja memakai nama baku."],
     ) + [
-        *COMPANY_FILL_LINES,
+        *company_fill_lines(),
         "## Catatan",
         "LEVEL_ID diawali 'DM-' agar mudah dikenali dan dihapus. Bila Company ID yang Anda pakai adalah company",
         "ASLI yang sudah punya tangga grade dari MSSQL, baris ini akan MENAMBAH level DM-* di sampingnya.",
@@ -373,7 +402,7 @@ AUDIT_CREATED = date(2024, 1, 15)
 
 def positions_master_book(opts: Options) -> Book:
     cols = [
-        Column("COMPANY_ID", 14, note=COMPANY_NOTE),
+        Column("COMPANY_ID", 14, note=company_note()),
         Column("POSITION_ID", 14),
         Column("INTERNAL_TITLE", 42),
         Column("EXTERNAL_TITLE", 36),
@@ -414,7 +443,7 @@ def positions_master_book(opts: Options) -> Book:
          "Treasury & Tax Department Head (DM02040001) sengaja KOSONG sejak pemegangnya naik jabatan — target",
          "suksesi yang bagus untuk demo."],
     ) + [
-        *COMPANY_FILL_LINES,
+        *company_fill_lines(),
         *footer("Unggah sebelum Hierarki Jabatan dan Penempatan Karyawan.",
                 f"'{len(rows)} baris Master Jabatan diproses ({len(rows)} baru, 0 diperbarui)'."),
     ]
@@ -423,7 +452,7 @@ def positions_master_book(opts: Options) -> Book:
 
 def positions_hierarchy_book(opts: Options) -> Book:
     cols = [
-        Column("COMPANY_ID", 14, note=COMPANY_NOTE),
+        Column("COMPANY_ID", 14, note=company_note()),
         Column("POSITION_ID", 14),
         Column("PARENT_POSITION_ID", 20, note=(
             "Atasan langsung. Kosong = puncak pohon demo. OPSIONAL (jingga): isi dengan POSITION_ID atasan ASLI "
@@ -458,7 +487,7 @@ def positions_hierarchy_book(opts: Options) -> Book:
         ["Satu baris per posisi demo: siapa atasan langsungnya. Lima division head adalah puncak pohon demo",
          f"({', '.join(roots)}) sehingga PARENT_POSITION_ID-nya kosong."],
     ) + [
-        *COMPANY_FILL_LINES,
+        *company_fill_lines(),
         "## PARENT_POSITION_ID (jingga, opsional)",
         "Biarkan kosong untuk lima pohon terpisah, atau isi dengan POSITION_ID atasan ASLI di database Anda:",
         "    SELECT position_id, internal_title FROM sync_positions",
@@ -473,7 +502,7 @@ def positions_hierarchy_book(opts: Options) -> Book:
 
 def positions_employees_book(opts: Options) -> Book:
     cols = [
-        Column("COMPANY_ID", 14, note=COMPANY_NOTE),
+        Column("COMPANY_ID", 14, note=company_note()),
         Column("EMPLOYEE_ID", 14),
         Column("POSITION_ID", 14),
         Column("PRIMARY_POSITION", 18),
@@ -515,7 +544,7 @@ def positions_employees_book(opts: Options) -> Book:
          *acting_lines,
          "jadi tidak pernah menjadi posisi saat ini (kandidat hanya dibentuk dari baris PRIMARY_POSITION = Y yang aktif)."],
     ) + [
-        *COMPANY_FILL_LINES,
+        *company_fill_lines(),
         *footer("Unggah setelah Data Karyawan dan Master Jabatan.",
                 f"'{len(rows)} baris Penempatan Karyawan diproses ({len(rows)} baru, 0 diperbarui)'."),
     ]
@@ -525,7 +554,7 @@ def positions_employees_book(opts: Options) -> Book:
 
 def positions_competencies_book(opts: Options) -> Book:
     cols = [
-        Column("COMPANY_ID", 14, note=COMPANY_NOTE),
+        Column("COMPANY_ID", 14, note=company_note()),
         Column("EMPLOYEE_ID", 14),
         Column("COMPANY_OFFICE", 18),
         Column("COST_CENTER", 13),
@@ -579,7 +608,8 @@ def positions_competencies_book(opts: Options) -> Book:
                 "MODI_BY": None,
                 "MODI_DATE": None,
             })
-            marks[(len(rows) - 1, "TECHNICAL_ID")] = REQUIRED_FK
+            if not opts.kamus_demo_codes:
+                marks[(len(rows) - 1, "TECHNICAL_ID")] = REQUIRED_FK
     mark_company(rows, marks)
 
     used = sorted({k for e in ds.EMPLOYEES for k, _ in e.position.competencies}, key=lambda k: ds.COMPETENCIES[k][0])
@@ -595,7 +625,8 @@ def positions_competencies_book(opts: Options) -> Book:
         code, name = ds.COMPETENCIES[key]
         n = sum(1 for r in rows if r["TECHNICAL_NAME"] == name)
         map_rows.append({"TECHNICAL_NAME": name, "KODE_DI_KAMUS_DEMO": code, "KODE_DI_KAMUS_ANDA": None, "JUMLAH_BARIS": n})
-        map_marks[(len(map_rows) - 1, "KODE_DI_KAMUS_ANDA")] = REQUIRED_FK
+        if not opts.kamus_demo_codes:
+            map_marks[(len(map_rows) - 1, "KODE_DI_KAMUS_ANDA")] = REQUIRED_FK
     mapping = Sheet("Kode Kompetensi", map_cols, map_rows, map_marks)
 
     lines = common_header(
@@ -604,7 +635,7 @@ def positions_competencies_book(opts: Options) -> Book:
          "jabatan (PROFICIENCY_*, SCORE) dan level yang DICAPAI karyawan (CURRENT_*, CURRENT_SCORE).",
          f"Memakai {len(used)} kompetensi; daftarnya ada di sheet 'Kode Kompetensi'."],
     ) + [
-        *COMPANY_FILL_LINES,
+        *company_fill_lines(),
         "## Mengisi TECHNICAL_ID (kuning) — WAJIB, baris tanpa kode akan DILEWATI",
         "TECHNICAL_ID adalah kode di Kamus Kompetensi database Anda. Dua pilihan:",
         "  a) Kamus ASLI Anda: di sheet 'Kode Kompetensi' isi kolom KODE_DI_KAMUS_ANDA untuk tiap nama, dengan",
@@ -628,7 +659,7 @@ def positions_competencies_book(opts: Options) -> Book:
 
 def performance_book(opts: Options) -> Book:
     cols = [
-        Column("COMPANY_ID", 14, note=COMPANY_NOTE),
+        Column("COMPANY_ID", 14, note=company_note()),
         Column("EMPLOYEE_ID", 14),
         Column("COMPANY_OFFICE", 18),
         Column("COST_CENTER", 13),
@@ -686,7 +717,7 @@ def performance_book(opts: Options) -> Book:
          "ada D/E (memaksa kinerja Low), karyawan baru tanpa PA, dan satu karyawan yang PA-nya hanya ada",
          f"sampai {year - 5} (di luar jendela -> belum terpetakan di Talent Mapping)."],
     ) + [
-        *COMPANY_FILL_LINES,
+        *company_fill_lines(),
         *footer("Unggah sebelum sinkronisasi Kandidat.",
                 f"'{len(rows)} baris Penilaian Kinerja diproses ({len(rows)} baru, 0 diperbarui)'."),
     ]
@@ -696,7 +727,7 @@ def performance_book(opts: Options) -> Book:
 
 def behavior_book(opts: Options) -> Book:
     cols = [
-        Column("COMPANY_ID", 14, note=COMPANY_NOTE),
+        Column("COMPANY_ID", 14, note=company_note()),
         Column("EMPLOYEE_ID", 14),
         Column("REKOMENDASI_NAME", 44, note=(
             "Kosakata baku DVP_MASTER_REKOMENDASI (STRENGTH, VERY HIGH, READY, POTENSI, NOT READY, ...). "
@@ -727,7 +758,7 @@ def behavior_book(opts: Options) -> Book:
          "Semua kategori memakai kosakata baku, termasuk tiga kategori terbawah (NOT READY, VERY LOW,",
          "BELUM ADA POTENSI) yang menggugurkan aturan Behavior."],
     ) + [
-        *COMPANY_FILL_LINES,
+        *company_fill_lines(),
         *footer("Unggah sebelum sinkronisasi Kandidat.",
                 f"'{people} baris Kompetensi Perilaku diproses ({people} baru, 0 diperbarui, {dupes} baris duplikat"
                 f" digabung)' — {len(rows)} baris di berkas, {people} karyawan tersimpan."),
@@ -738,7 +769,7 @@ def behavior_book(opts: Options) -> Book:
 
 def disciplinary_book(opts: Options) -> Book:
     cols = [
-        Column("COMPANY_ID", 14, note=COMPANY_NOTE),
+        Column("COMPANY_ID", 14, note=company_note()),
         Column("EMPLOYEE_ID", 14),
         Column("DISPLAY_NAME", 24),
         Column("DISCIPLINARY_NO", 16, "int"),
@@ -747,9 +778,9 @@ def disciplinary_book(opts: Options) -> Book:
         Column("VIOLATION_DEGREE", 17, "int"),
         Column("VIOLATION_TYPE", 15, "int"),
         Column("WARNING_LEVEL", 15, "int", note=(
-            "Angka. Cara sinkronisasi kandidat membacanya: 1 = ST (tetap lolos), 2 = SP (masih berlaku -> "
-            "ACTIVE_SP; berakhir < 2 tahun -> SP_UNDER_2_YEARS), 3 = SP3, 5 = SP First/Last. Level 2 yang "
-            "berakhir > 2 tahun lalu dianggap CLEAR.")),
+            "Angka, kode sumber HR: 1 = SP1, 2 = SP2, 3 = SP3, 4 = ST (Surat Teguran), 5 = SP Pertama & "
+            "Terakhir. SP1/SP2 dinilai dari EXPIRY_DATE: masih berlaku -> ACTIVE_SP; berakhir < 2 tahun -> "
+            "SP_UNDER_2_YEARS; berakhir >= 2 tahun -> SP_OVER_2_YEARS. Catatan terberat yang menentukan.")),
         Column("EFFECT_VIOLATION", 30),
         Column("ADVICE_GIVEN", 36),
         Column("SANCTION_GIVEN", 28),
@@ -765,7 +796,7 @@ def disciplinary_book(opts: Options) -> Book:
             serial += 1
             issued = months_before(opts.as_of, d.issued_months_ago)
             expiry = add_months(issued, d.valid_months) - timedelta(days=1)
-            kind = {1: "ST", 2: "SP2", 3: "SP3", 5: "SPFL"}.get(d.warning_level, "SP")
+            kind = {1: "SP1", 2: "SP2", 3: "SP3", 4: "ST", 5: "SPFL"}.get(d.warning_level, "SP")
             rows.append({
                 "COMPANY_ID": company_cell(opts),
                 "EMPLOYEE_ID": e.npk,
@@ -787,9 +818,9 @@ def disciplinary_book(opts: Options) -> Book:
     marks: dict = {}
     mark_company(rows, marks)
     meaning = {
-        "ST": "ST (warning 1): tetap lolos aturan disiplin.",
+        "ST": "ST (warning 4): tetap lolos aturan disiplin.",
         "SP_UNDER_2_YEARS": "SP berakhir < 2 tahun lalu (SP_UNDER_2_YEARS): gugur, keluar dari peta Talent Mapping.",
-        "CLEAR": "SP berakhir > 2 tahun lalu: dianggap CLEAR, tetap lolos.",
+        "SP_OVER_2_YEARS": "SP berakhir >= 2 tahun lalu (SP_OVER_2_YEARS): aturan bawaan meloloskannya.",
         "SP3": "SP3: gugur walau kinerjanya baik.",
         "ACTIVE_SP": "SP masih berlaku (ACTIVE_SP): gugur.",
     }
@@ -801,7 +832,7 @@ def disciplinary_book(opts: Options) -> Book:
          *cases,
          f"Tanggal surat dihitung mundur dari {opts.as_of.isoformat()} supaya kategorinya tetap seperti di atas."],
     ) + [
-        *COMPANY_FILL_LINES,
+        *company_fill_lines(),
         *footer("Unggah sebelum sinkronisasi Kandidat.",
                 f"'{len(rows)} baris Catatan Disiplin diproses ({len(rows)} baru, 0 diperbarui)'."),
     ]
@@ -810,7 +841,7 @@ def disciplinary_book(opts: Options) -> Book:
 
 def education_book(opts: Options) -> Book:
     cols = [
-        Column("COMPANY_ID", 14, note=COMPANY_NOTE),
+        Column("COMPANY_ID", 14, note=company_note()),
         Column("EMPLOYEE_ID", 14),
         Column("DISPLAY_NAME", 24),
         Column("EDUCATION_LEVEL", 16),
@@ -851,7 +882,7 @@ def education_book(opts: Options) -> Book:
          "dipakai kandidat adalah jenjang dengan EDUCATION_LEVEL_RANK tertinggi. Nama institusi adalah kampus nyata,",
          "tetapi orang dan nilainya fiktif. GPA kosong untuk lulusan SMK."],
     ) + [
-        *COMPANY_FILL_LINES,
+        *company_fill_lines(),
         *footer("Unggah sebelum sinkronisasi Kandidat.",
                 f"'{len(rows)} baris Riwayat Pendidikan diproses ({len(rows)} baru, 0 diperbarui)'."),
     ]
@@ -949,5 +980,7 @@ BOOK_BUILDERS: list[Callable[[Options], Book]] = [
 
 
 def write_all(out_dir: Path, opts: Options) -> list[Path]:
+    global _ACTIVE
+    _ACTIVE = opts
     out_dir.mkdir(parents=True, exist_ok=True)
     return [write_book(builder(opts), out_dir, opts.as_of) for builder in BOOK_BUILDERS]

@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { config } from "../config.js";
-import { sealValue, tryOpen, type WriteMode } from "./crypto.js";
 import { canonicalQuadrant } from "./hav-effective.js";
+import { npkKey, npkKeySql } from "./npk.js";
 import {
   automaticHav,
   havUploadEvent,
@@ -92,7 +92,7 @@ function describeAutomatic(hav: AutomaticHav): string {
   return hav.quadrant != null ? `Q${hav.quadrant} (${SOURCE_LABEL[hav.source]})` : "belum ada";
 }
 
-/** The sentence stored (sealed) as the trail row's reason. */
+/** The sentence stored as the trail row's reason. */
 function describeChange(origin: HavAutoChangeOrigin, change: AutomaticHavChange, displaced: string | null): string {
   const what =
     change.cause === "upload"
@@ -144,7 +144,6 @@ export async function havSchemaShape(
 export async function recordAutomaticHavChanges(
   client: PoolClient,
   changes: AutomaticHavChange[],
-  writeMode: WriteMode,
   origin: HavAutoChangeOrigin,
 ): Promise<HavChangeRecordResult> {
   if (changes.length === 0) return { stamped: 0, superseded: 0 };
@@ -192,8 +191,8 @@ export async function recordAutomaticHavChanges(
   }
 
   // One trail row per change, superseding or not, so the trail shows every sync
-  // event between the manual ones. Sealed like the rest of the 'hav16' rows; the
-  // displaced placement's quadrant is copied as stored, never opened.
+  // event between the manual ones. The displaced placement's quadrant is copied
+  // as stored.
   const cols = {
     tenant: [] as string[],
     employee: [] as string[],
@@ -205,35 +204,35 @@ export async function recordAutomaticHavChanges(
     why: [] as (string | null)[],
   };
   for (const change of changes) {
-    const displacedSealed = displacedBy.get(change.candidateId) ?? null;
+    const displacedStored = displacedBy.get(change.candidateId) ?? null;
     // A PA/BA re-read that moved nothing visible (same square, same source, no
     // placement displaced) is stamped but not logged: the trail is for events a
     // reader can see on the map, and a new PA semester in the same band is not.
     if (
-      displacedSealed == null &&
+      displacedStored == null &&
       change.before.quadrant === change.after.quadrant &&
       change.before.source === change.after.source
     ) {
       continue;
     }
-    const displacedOpen = displacedSealed != null ? canonicalQuadrant(tryOpen(displacedSealed)) : null;
-    const displacedLabel = displacedSealed == null ? null : displacedOpen != null ? `Q${displacedOpen}` : "(tidak terbaca)";
+    const displacedOpen = displacedStored != null ? canonicalQuadrant(displacedStored) : null;
+    const displacedLabel = displacedStored == null ? null : displacedOpen != null ? `Q${displacedOpen}` : "(tidak terbaca)";
     cols.tenant.push(change.tenantId);
     cols.employee.push((change.employeeId ?? "").slice(0, 20));
     cols.candidate.push(change.candidateId);
     cols.action.push(
-      displacedSealed == null
+      displacedStored == null
         ? "automatic_changed"
         : origin === "candidate_sync" || origin === "pa_ba_upload"
           ? "superseded_by_sync"
           : "superseded_by_upload",
     );
     cols.oldQ.push(
-      displacedSealed ?? sealValue(writeMode, change.before.quadrant != null ? String(change.before.quadrant) : null),
+      displacedStored ?? (change.before.quadrant != null ? String(change.before.quadrant) : null),
     );
-    cols.newQ.push(sealValue(writeMode, change.after.quadrant != null ? String(change.after.quadrant) : null));
+    cols.newQ.push(change.after.quadrant != null ? String(change.after.quadrant) : null);
     cols.baselineSource.push(change.after.source);
-    cols.why.push(sealValue(writeMode, describeChange(origin, change, displacedLabel)));
+    cols.why.push(describeChange(origin, change, displacedLabel));
   }
 
   if (cols.candidate.length === 0) return { stamped, superseded: displacedBy.size };
@@ -266,8 +265,8 @@ export async function recordAutomaticHavChanges(
 }
 
 /**
- * The HAV inputs of these employees' candidate rows in one tenant, decrypted
- * and LOCKED (`FOR UPDATE`) until the caller's transaction ends — read before a
+ * The HAV inputs of these employees' candidate rows in one tenant, row-LOCKED
+ * (`FOR UPDATE`) until the caller's transaction ends — read before a
  * write overwrites them, which is the only moment "what did this change" can be
  * answered. Tombstoned rows are included: a bulk-cleared candidate can still
  * hold a placement, and the sync is what brings them back.
@@ -302,9 +301,9 @@ export async function loadPriorHavInputs(
     out.set(row.employee_id, {
       candidateId: row.id,
       inputs: {
-        upload: canonicalHavQuadrant(tryOpen(row.hav_quadrant)),
-        performanceGrade: tryOpen(row.performance_grade),
-        behaviorRecommendation: tryOpen(row.behavior_recommendation),
+        upload: canonicalHavQuadrant(row.hav_quadrant),
+        performanceGrade: row.performance_grade,
+        behaviorRecommendation: row.behavior_recommendation,
         tier: asTier(row.hav_auto_tier),
       },
     });
@@ -317,8 +316,7 @@ function asTier(raw: string | null | undefined): AutomaticTier | null {
 }
 
 /**
- * Manual placements IN FORCE for these candidates (newer than their clock),
- * opened. The same predicate as the readers (web lib/hav-placements.ts,
+ * Manual placements IN FORCE for these candidates (newer than their clock). The same predicate as the readers (web lib/hav-placements.ts,
  * scoring-service hav-placements.ts). Needed by a HAV upload made in the app,
  * which counts as an event when it differs from the HAV in force.
  */
@@ -339,7 +337,7 @@ async function loadPlacementsInForce(
     [candidateIds],
   );
   for (const row of rows.rows) {
-    const q = canonicalQuadrant(tryOpen(row.quadrant));
+    const q = canonicalQuadrant(row.quadrant);
     if (q != null) out.set(row.candidateId, q);
   }
   return out;
@@ -379,14 +377,20 @@ export async function detectHavUploadChanges(
   incoming: { npk: string; quadrant: string | null }[],
   opts: { includeUnchanged?: boolean } = {},
 ): Promise<HavUploadChange[]> {
+  // Keyed by the normalised NPK (npk.ts): the workbook and sync_hav may spell
+  // one person "5123" or "05123". Changes carry that key as their `npk`.
   const latest = new Map<string, string>();
   for (const row of incoming) {
     const q = canonicalHavQuadrant(row.quadrant);
-    if (row.npk && q) latest.set(row.npk, q);
+    const key = npkKey(row.npk);
+    if (key && q) latest.set(key, q);
   }
   if (latest.size === 0) return [];
+  // Oldest first, so the newest stored spelling of an NPK wins the Map below.
   const prior = await client.query<{ npk: string; quadrant: string | null }>(
-    `SELECT npk, quadrant FROM sync_hav WHERE npk = ANY($1::text[])`,
+    `SELECT ${npkKeySql("npk")} AS npk, quadrant FROM sync_hav
+      WHERE ${npkKeySql("npk")} = ANY($1::text[])
+      ORDER BY synced_at ASC NULLS FIRST, id ASC`,
     [Array.from(latest.keys())],
   );
   const before = new Map(prior.rows.map((r) => [r.npk, canonicalHavQuadrant(r.quadrant)]));
@@ -410,20 +414,20 @@ export async function detectHavUploadChanges(
  * from the candidate's HAV in force (a placement or a formula pinned by a PA/BA
  * change included). A candidate for whom neither holds is left alone.
  *
- * Matching is `candidates.employee_id = npk` across every business unit,
- * exactly the join candidate-populate uses, so the two writers can never
- * disagree about who a row belongs to.
+ * Matching is on the normalised NPK (npk.ts: numeric ids left-padded to 5, the
+ * repo's LPAD convention) across every business unit — the same identity
+ * candidate-populate's HAV join uses, so the two writers can never disagree
+ * about who a row belongs to. `changes[].npk` is already that key.
  */
 export async function applyHavUploadChanges(
   client: PoolClient,
   changes: HavUploadChange[],
-  writeMode: WriteMode,
   origin: Extract<HavAutoChangeOrigin, "hav_upload" | "hav_folder">,
 ): Promise<HavUploadApplyResult> {
   if (changes.length === 0) return { candidatesUpdated: 0, stamped: 0, placementsSuperseded: 0 };
 
   const { tier: hasTier } = await havSchemaShape(client);
-  const nextByNpk = new Map(changes.map((c) => [c.npk, c.next]));
+  const nextByNpk = new Map(changes.map((c) => [npkKey(c.npk), c.next]));
   const rows = await client.query<{
     id: string;
     tenant_id: string;
@@ -436,7 +440,7 @@ export async function applyHavUploadChanges(
     `SELECT id, tenant_id, employee_id, hav_quadrant, performance_grade, behavior_recommendation,
             ${hasTier ? "hav_auto_tier" : "NULL::text AS hav_auto_tier"}
        FROM candidates
-      WHERE employee_id = ANY($1::text[])
+      WHERE ${npkKeySql("employee_id")} = ANY($1::text[])
       ORDER BY id
         FOR UPDATE`,
     [Array.from(nextByNpk.keys())],
@@ -446,12 +450,12 @@ export async function applyHavUploadChanges(
   const events: AutomaticHavChange[] = [];
   const toWrite: { id: string; next: string }[] = [];
   for (const row of rows.rows) {
-    const next = nextByNpk.get(row.employee_id);
+    const next = nextByNpk.get(npkKey(row.employee_id));
     if (!next) continue;
     const before: HavInputs = {
-      upload: canonicalHavQuadrant(tryOpen(row.hav_quadrant)),
-      performanceGrade: tryOpen(row.performance_grade),
-      behaviorRecommendation: tryOpen(row.behavior_recommendation),
+      upload: canonicalHavQuadrant(row.hav_quadrant),
+      performanceGrade: row.performance_grade,
+      behaviorRecommendation: row.behavior_recommendation,
       tier: asTier(row.hav_auto_tier),
     };
     const inForce = manual.get(row.id) ?? automaticHav(before).quadrant;
@@ -472,19 +476,17 @@ export async function applyHavUploadChanges(
 
   let candidatesUpdated = 0;
   if (toWrite.length > 0) {
-    // One seal per row. sealValue throws while locked — the caller's
-    // transaction then rolls the whole upload back rather than applying half.
     const updated = await client.query(
       `UPDATE candidates AS c
           SET hav_quadrant = v.q, updated_at = now()
          FROM UNNEST($1::uuid[], $2::text[]) AS v(id, q)
         WHERE c.id = v.id`,
-      [toWrite.map((w) => w.id), toWrite.map((w) => sealValue(writeMode, w.next))],
+      [toWrite.map((w) => w.id), toWrite.map((w) => w.next)],
     );
     candidatesUpdated = updated.rowCount ?? 0;
   }
 
-  const recorded = await recordAutomaticHavChanges(client, events, writeMode, origin);
+  const recorded = await recordAutomaticHavChanges(client, events, origin);
   return {
     candidatesUpdated,
     stamped: recorded.stamped,

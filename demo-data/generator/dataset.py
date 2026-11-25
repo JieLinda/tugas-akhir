@@ -278,7 +278,7 @@ class Discipline:
     """One record. `issued_months_ago` is relative to the generation date so the
     derived discipline_status (candidate-populate.ts) stays what was designed."""
 
-    warning_level: int  # 1 = ST, 2 = SP (active / <2 years), 3 = SP3 (candidate-populate.ts)
+    warning_level: int  # HR source codes: 1 = SP1, 2 = SP2, 3 = SP3, 4 = ST, 5 = SP Pertama & Terakhir (candidate-populate.ts)
     issued_months_ago: int
     valid_months: int
     violation: str
@@ -482,9 +482,9 @@ EMPLOYEES: list[Employee] = [
              [Assessment(date(2024, 4, 25), "NEED TARGETED DEVELOPMENT", "Perlu pengembangan perencanaan event yang terukur.")],
              [edu("S1", "Manajemen", UM, 2013, 2017, 3.15)],
              MCU_FIT, competency_delta=0,
-             discipline=[Discipline(1, 16, 3, "Terlambat hadir berulang (5 kali dalam satu bulan).", 1, 1,
+             discipline=[Discipline(4, 16, 3, "Terlambat hadir berulang (5 kali dalam satu bulan).", 1, 1,
                                     None, "Pembinaan oleh atasan langsung.", "ST (Surat Teguran)")],
-             story="Punya Surat Teguran (warning level 1 = ST): tetap memenuhi aturan disiplin. Q8.",
+             story="Punya Surat Teguran (warning level 4 = ST): tetap memenuhi aturan disiplin. Q8.",
              expect_formula=8, expect_hav=8, expect_discipline="ST", expect_talent_pool=False),
     # ── Finance & Accounting ──
     Employee("99014", "Wahyu Hidayat", OFFICE_HO, date(2001, 2, 1),
@@ -534,13 +534,13 @@ EMPLOYEES: list[Employee] = [
              [edu("D3", "Akuntansi", POLINEMA, 2015, 2018, 2.94)],
              MCU_FIT, competency_delta=-1,
              discipline=[
-                 Discipline(1, 32, 3, "Tidak mengikuti prosedur verifikasi dokumen.", 1, 1,
+                 Discipline(4, 32, 3, "Tidak mengikuti prosedur verifikasi dokumen.", 1, 1,
                             None, "Pembinaan oleh atasan langsung.", "ST (Surat Teguran)"),
                  Discipline(2, 20, 6, "Kesalahan input berulang yang menyebabkan selisih kas.", 2, 1,
                             "Selisih kas harus dikoreksi manual.", "Pendampingan supervisor selama 3 bulan.",
                             "SP2 (Surat Peringatan)"),
              ],
-             story="SP berakhir < 2 tahun lalu -> SP_UNDER_2_YEARS: gugur aturan disiplin dan TIDAK masuk peta Talent Mapping.",
+             story="ST lama + SP2 berakhir < 2 tahun lalu -> yang terberat menang, SP_UNDER_2_YEARS: gugur aturan disiplin dan TIDAK masuk peta Talent Mapping.",
              expect_formula=12, expect_hav=12, expect_discipline="SP_UNDER_2_YEARS", expect_talent_pool=False),
     Employee("99019", "Anisa Fitriani", OFFICE_HO, date(2022, 9, 1),
              [Stint("DM02030022", date(2022, 9, 1))],
@@ -566,8 +566,8 @@ EMPLOYEES: list[Employee] = [
              MCU_FIT, competency_delta=0,
              discipline=[Discipline(2, 58, 6, "Keterlambatan setor dana operasional.", 2, 1,
                                     None, "Pembinaan oleh atasan langsung.", "SP2 (Surat Peringatan)")],
-             story="SP lama yang berakhir > 2 tahun lalu -> CLEAR; tetap lolos Talent Pool (Q7).",
-             expect_formula=7, expect_hav=7, expect_discipline="CLEAR", expect_talent_pool=True),
+             story="SP2 yang berakhir >= 2 tahun lalu -> SP_OVER_2_YEARS; aturan disiplin bawaan meloloskannya, tetap lolos Talent Pool (Q7).",
+             expect_formula=7, expect_hav=7, expect_discipline="SP_OVER_2_YEARS", expect_talent_pool=True),
     # ── Human Capital ──
     Employee("99022", "Sri Astuti", OFFICE_HO, date(2004, 9, 1),
              [Stint("DM03000001", date(2004, 9, 1))],

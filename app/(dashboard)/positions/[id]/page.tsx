@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { InfoHint } from '@/components/ui/info-hint';
 import { getPositionDetail, getGradeLevelsForTenant, getPositionIncumbentProfile , getIncumbentCandidateIds } from '@/lib/pulse-data';
-import { getCurrentTenantId, TENANTS } from '@/lib/tenant';
+import { getCurrentTenantId, listTenants } from '@/lib/tenant';
 import { getScoringRun, getScoringRunsForPosition } from '@/lib/scoring-engine';
 import { listProgramTemplates, positionProgramTemplates } from '@/lib/programs';
 import { listPositionPicks } from '@/lib/position-pick-actions';
@@ -312,7 +312,7 @@ export default async function PositionDetailPage({
               defaultProgram={resolvedSearchParams.program ?? ''}
               defaultDateFrom={dateFrom}
               defaultDateTo={dateTo}
-              tenants={TENANTS.map((t) => ({ id: t.id, name: t.name }))}
+              tenants={(await listTenants()).map((t) => ({ id: t.id, name: t.name }))}
               gradeLevels={gradeLevels.map((g) => ({ gradeId: g.gradeId, levelName: g.levelName }))}
               excludeEmployeeIds={excludeEmployeeIds}
               incumbentCandidateIds={incumbentCandidateIds}

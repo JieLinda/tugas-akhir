@@ -4,6 +4,7 @@ import { syncRouter } from "./routes/sync.js";
 import { uploadRouter } from "./routes/upload.js";
 import { adminRouter } from "./routes/admin.js";
 import { auditSyncRuns } from "./middleware/audit-sync.js";
+import { sourceSyncGuard } from "./middleware/source-sync-guard.js";
 import { markInterruptedRuns } from "./services/sync-audit.js";
 import { startScheduler, stopScheduler } from "./scheduler.js";
 import {
@@ -17,13 +18,16 @@ const app = express();
 app.use(express.json());
 
 // ── Routes ──────────────────────────────────────────────────
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
+// sourceSync tells the web app whether source syncs may run (SOURCE_SYNC_ENABLED).
+app.get("/health", (_req, res) => res.json({ status: "ok", sourceSync: config.sourceSyncEnabled }));
 // Audit first so it wraps res.json for BOTH the upload and sync routers.
 app.use("/api/sync", auditSyncRuns());
 // Mounted before syncRouter: /upload/* carries a raw binary body and must not be
 // touched by the JSON body parser or mistaken for a sync trigger path.
 app.use("/api/sync/upload", uploadRouter);
-// Operational endpoints (_unlock, _reload-db-config, ...). Their "_" prefix is
+// SOURCE_SYNC_ENABLED=false: refuse source syncs with one clear message (uploads pass).
+app.use("/api/sync", sourceSyncGuard());
+// Operational endpoints (_db-settings, _reload-db-config, ...). Their "_" prefix is
 // what audit-sync.ts skips on, so they never appear in the sync run history.
 app.use("/api/sync", adminRouter);
 app.use("/api/sync", syncRouter);

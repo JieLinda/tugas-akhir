@@ -1,4 +1,10 @@
-import type { FilterCondition, FilterConditionGroup, FilterRule } from '@/lib/db/schema';
+import type {
+  CandidateAttributeField,
+  FilterCondition,
+  FilterConditionGroup,
+  FilterOperator,
+  FilterRule,
+} from '@/lib/db/schema';
 
 /**
  * Helpers for the nested boolean condition tree used by program eligibility
@@ -190,4 +196,109 @@ export function talentMappingGateTree(tree: FilterConditionGroup): FilterConditi
 /** The switched-on, non-advisory rules that gate Talent Mapping, for display. */
 export function talentMappingGateRules(tree: FilterConditionGroup): FilterRule[] {
   return flattenFilterTree(talentMappingGateTree(tree));
+}
+
+// ── What a rule may say ────────────────────────────────────────────────────
+
+const SET_OPERATORS = ['eq', 'neq', 'in', 'notIn'] as const satisfies readonly FilterOperator[];
+const NUMERIC_OPERATORS = [...SET_OPERATORS, 'gte', 'lte', 'gt', 'lt'] as const satisfies readonly FilterOperator[];
+
+/**
+ * The operators that MEAN something for each field, given how the evaluator
+ * (lib/programs.ts) compares. Everything else is refused on save and not offered
+ * by the editor, because each of them fails SILENTLY — the rule simply rejects
+ * every candidate, which reads as a legitimate verdict:
+ *
+ *  - `gte`/`lte`/`gt`/`lt` compare only when both sides are numbers, and only
+ *    `yearsExperience` is a number. On discipline, MCU, HAV ("1".."16" are
+ *    strings), behaviour or education they are false for everybody.
+ *  - `notExpired`/`isExpired` read the value as a DATE. No filterable field is a
+ *    date, so `notExpired` on 'CLEAR' is false for everybody too.
+ *
+ * Both stay in the FilterOperator type so an old stored rule still parses and
+ * is reported by validateFilterTree instead of vanishing.
+ */
+export const FILTER_OPERATORS_BY_FIELD: Record<CandidateAttributeField, readonly FilterOperator[]> = {
+  disciplineStatus: SET_OPERATORS,
+  mcuStatus: SET_OPERATORS,
+  performanceGrade: SET_OPERATORS,
+  havQuadrant: SET_OPERATORS,
+  behaviorRecommendation: SET_OPERATORS,
+  education: SET_OPERATORS,
+  yearsExperience: NUMERIC_OPERATORS,
+};
+
+export function operatorsForField(field: CandidateAttributeField): readonly FilterOperator[] {
+  return FILTER_OPERATORS_BY_FIELD[field] ?? SET_OPERATORS;
+}
+
+const FIELD_NAMES: Record<CandidateAttributeField, string> = {
+  disciplineStatus: 'Status Disiplin',
+  mcuStatus: 'Status MCU',
+  performanceGrade: 'Performance Appraisal',
+  havQuadrant: 'HAV Quadrant',
+  behaviorRecommendation: 'Behavior Recommendation',
+  yearsExperience: 'Masa Kerja',
+  education: 'Pendidikan',
+};
+
+const isFilled = (v: unknown): boolean =>
+  (typeof v === 'string' && v.trim() !== '') || (typeof v === 'number' && Number.isFinite(v));
+
+/**
+ * Every reason this tree cannot be evaluated the way it reads, in Indonesian,
+ * one line per rule. Empty = valid. Both save paths (Talent Pool page, Tata
+ * Kelola) refuse a tree with any finding, switched-off rules included — an off
+ * rule is one click from deciding again.
+ *
+ * Structure is already normalised by normalizeFilterTree; this checks what a
+ * rule SAYS: a known field, an operator that means something for it
+ * (FILTER_OPERATORS_BY_FIELD), and a value of the right shape. An `in` list
+ * with no values is the one most easily saved by accident and the most
+ * damaging: it rejects every candidate.
+ */
+export function validateFilterTree(tree: FilterConditionGroup): string[] {
+  const problems: string[] = [];
+  let n = 0;
+  const visit = (node: FilterCondition) => {
+    if (node.kind === 'group') {
+      node.children.forEach(visit);
+      return;
+    }
+    n += 1;
+    const rule = node.rule as Partial<FilterRule> | undefined;
+    const field = rule?.field as CandidateAttributeField | undefined;
+    const name = field && FIELD_NAMES[field] ? FIELD_NAMES[field] : String(field ?? '?');
+    const label = rule?.label?.trim();
+    const where = `Aturan ${n}${label ? ` "${label}"` : ''} (${name})`;
+    if (!rule || !field || !FIELD_NAMES[field]) {
+      problems.push(`${where}: kolom "${String(field ?? '')}" tidak dikenal.`);
+      return;
+    }
+    const operator = rule.operator as FilterOperator;
+    if (!operatorsForField(field).includes(operator)) {
+      problems.push(`${where}: operator "${String(operator)}" tidak berlaku untuk kolom ini dan akan menggugurkan semua kandidat.`);
+      return;
+    }
+    if (rule.severity != null && rule.severity !== 'hard' && rule.severity !== 'advisory') {
+      problems.push(`${where}: sifat aturan "${String(rule.severity)}" tidak dikenal.`);
+    }
+    const value = rule.value as unknown;
+    if (operator === 'in' || operator === 'notIn') {
+      if (!Array.isArray(value) || value.length === 0) {
+        problems.push(
+          `${where}: belum ada nilai yang dipilih` +
+            (operator === 'in' ? ' — aturan ini akan menggugurkan semua kandidat.' : '.'),
+        );
+      } else if (!value.every(isFilled)) {
+        problems.push(`${where}: ada nilai kosong di daftar.`);
+      }
+    } else if (operator === 'eq' || operator === 'neq') {
+      if (Array.isArray(value) || !isFilled(value)) problems.push(`${where}: nilai belum diisi.`);
+    } else if (typeof value !== 'number' || !Number.isFinite(value)) {
+      problems.push(`${where}: nilai harus berupa angka.`);
+    }
+  };
+  visit(tree);
+  return problems;
 }

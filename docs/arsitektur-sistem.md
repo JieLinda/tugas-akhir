@@ -4,8 +4,9 @@ Struktur tingkat tinggi, komponen utama, dan alur interaksi
 
 | | |
 |---|---|
-| Versi dokumen | 1.6 |
-| Tanggal | 17 November 2026 (versi 1.5 dan 1.4: 5 November 2026; versi 1.3: 30 Oktober 2026; versi 1.2 dan 1.1: 29 Oktober 2026; versi 1.0: 30 September 2026) |
+| Versi dokumen | 1.7 |
+| Tanggal | 25 November 2026 (versi 1.6: 17 November 2026; versi 1.5 dan 1.4: 5 November 2026; versi 1.3: 30 Oktober 2026; versi 1.2 dan 1.1: 29 Oktober 2026; versi 1.0: 30 September 2026) |
+| Perubahan versi 1.7 | 25 November 2026: enkripsi tingkat aplikasi dihapus dari sistem — enkripsi amplop AES-256-GCM, berkas kunci master (`PULSE_MASTER_KEY_FILE` / `PULSE_MASTER_KEY`), halaman Keamanan (`/settings/security`, kini dialihkan ke Sinkronisasi), dan tabel `app_encryption_keys` (dibuang `drizzle/0099_drop_app_encryption.sql`, sehingga hitungan tabel turun satu). Data tersimpan sebagai teks biasa; data lama dikonversi sekali oleh `scripts/decrypt-all-sealed.ts` sebelum migrasi itu dijalankan. §1, §2.1, §2.2, §2.3, §2.6, §4.1, §4.2, §5.3, §5.4, §5.6, §5.7, dan Lampiran A disesuaikan |
 | Perubahan versi 1.6 | 17 November 2026: metode AI Tournament (LLM) dihapus dari sistem; AHP + TOPSIS menjadi satu-satunya mesin penilaian. Ikut dihapus: subagen aspek, agen justifikasi, cache skor aspek LLM, prompt sistem program beserta riwayat versinya, Konteks Bisnis, dan umpan balik suara run beserta izin `scoring.feedback` (izin turun dari 12 menjadi 11). `drizzle/0097_remove_llm_tournament.sql` menghapus run LLM yang tersimpan dan empat tabel khusus LLM (`candidate_aspect_scores`, `scoring_run_feedback`, `prompt_versions`, `program_contexts`), sehingga hitungan tabel turun empat. §2.1, §2.2, §2.4, §2.6, §3.3, §4.1, §5.3–§5.5, §5.7, dan Lampiran A disesuaikan |
 | Perubahan versi 1.5 | 5 November 2026: fitur Simulasi penempatan (simulasi kecocokan peran) dihapus dari sistem — berkas action-nya beserta empat server action, modul prompt, komponen antarmukanya di tab Kandidat, dan tabel `candidate_simulations` (dibuang drizzle/0096). Hitungan tabel dan server action turun sebanyak yang dihapus. Endpoint LLM (`LLM_BASE_URL`/`LLM_MODEL`) tetap ada karena dipakai fitur lain |
 | Perubahan versi 1.4 | 5 November 2026: fitur Keyakinan Penempatan (MCU) dihapus dari sistem — modulnya di web dan scoring-service, lima endpoint, berkas konfigurasi, panel Tata Kelola, dan tabel `mcu_confidence_assessments` (dibuang drizzle/0095). Subbagian 3.5 lama ikut dihapus sehingga 3.6 menjadi 3.5. Status MCU, aturan filter MCU yang hanya menandai, dan kolom catatan MCU kandidat tetap ada |
@@ -51,7 +52,7 @@ Secara teknis ia terdiri atas satu aplikasi web Next.js, tiga layanan latar
 | Ukuran | Nilai |
 |---|---|
 | Unit deployable | 4 (web, sync-service, scoring-service, topic-service) |
-| Tabel basis data utama | 67 |
+| Tabel basis data utama | 66 |
 | Tabel basis data vektor | 3 |
 | Migrasi skema | 82 berkas, berawalan `0000`–`0077` |
 | Berkas server action | 38 (`lib/*-actions.ts`), 154 action terekspor |
@@ -94,7 +95,7 @@ penyimpanan yang mereka bagi bersama.
                    │              └───────┬───────┘          │
                    │                      │                  │
         ┌──────────v──────────────────────v──────────────────v────────┐
-        │            PostgreSQL utama  ·  67 tabel                    │
+        │            PostgreSQL utama  ·  66 tabel                    │
         │  (skema dimiliki aplikasi web melalui Drizzle ORM)          │
         └─────────────────────────────┬───────────────────────────────┘
                                       │
@@ -147,7 +148,6 @@ NextAuth dan rute proksi tipis ke layanan latar.
 | `/governance` | Tata Kelola — empat seksi konfigurasi | `governance.manage` |
 | `/settings/sync` | Sinkronisasi | `sync.manage` |
 | `/settings/users` | Pengguna & Akses | `users.manage` |
-| `/settings/security` | Keamanan — kustodi kunci enkripsi | `governance.manage` |
 
 Komponen dikelompokkan per domain di bawah `components/{analysis, governance,
 scoring, job-family, job-profiles, settings, activity-thread}`,
@@ -175,14 +175,14 @@ Pengelompokan menurut fungsi:
 | **Data inti** | `pulse-data.ts` (2.771 baris), `pulse-crud-actions.ts`, `position-*-actions.ts`, `talent-pool-*.ts` | Pembacaan agregat untuk halaman, operasi jabatan dan kandidat |
 | **Profil jabatan** | `job-profile-actions.ts`, `job-profile-tenant-scope.ts`, `sync-actions.ts` | Katalog dokumen, cakupan kepemilikan per unit bisnis, snapshot hierarki |
 | **Job Family** | `lib/job-family/` (12 modul + 3 di `optimize/`) dan 7 berkas action | Pencocokan jabatan↔profil, embedding, pemodelan topik, pengelompokan kompetensi |
-| **Keamanan** | `auth.ts`, `rbac.ts`, `tenant.ts`, `lib/crypto/` (3 modul), `candidate-crypto.ts` | Otentikasi, 11 izin, multi-tenant, enkripsi amplop AES-256-GCM |
+| **Keamanan** | `auth.ts`, `rbac.ts`, `tenant.ts` | Otentikasi, 11 izin, multi-tenant |
 | **Tata kelola** | `program-actions.ts`, `program-defaults.ts`, `readiness-config-actions.ts`, `retirement-config-actions.ts`, `scoring-prompt-actions.ts` | Templat program, ambang kesiapan dan pensiun, prompt model (kriteria pendidikan dan narasi AHP) |
 | **Utilitas lintas** | `datetime.ts`, `audit.ts`, `navigation.ts`, `candidate-visibility.ts`, `filter-rules.ts` | Format waktu terpaku Asia/Jakarta, jejak audit, penyaring tombstone |
 
 #### Lapisan data (`lib/db/`)
 
 Skema dimiliki aplikasi web dan didefinisikan dengan Drizzle ORM di
-`lib/db/schema.ts` (67 tabel). Migrasi tinggal di `drizzle/`.
+`lib/db/schema.ts` (66 tabel). Migrasi tinggal di `drizzle/`.
 
 Empat modul kecil di `lib/db/` menangani hal-hal yang mudah salah:
 
@@ -210,7 +210,7 @@ Strukturnya: 28 modul layanan di `sync-service/src/services/`, tiga router
 | Sumber berkas | `job-profile-sync`, `llm-processor`, `hav-sync`, `mcu-sync`, `kamus-sync` | Ekstraksi PDF profil jabatan dengan model visi; Excel HAV dan MCU |
 | Unggahan Excel | `excel-sources`, `excel-ingest`, `excel-template`, `upload-store` | Registri deklaratif 10 sumber yang dapat digantikan unggahan sekali jalan |
 | Turunan | `candidate-populate`, `clean-sync` | Menyusun baris `candidates` dari data tersinkron |
-| Infrastruktur | `db-settings`, `crypto`, `token`, `sync-audit`, `sync-summary`, `network-share` | Koneksi sumber tersimpan, dekripsi kata sandi, token OAuth, jejak audit |
+| Infrastruktur | `db-settings`, `token`, `sync-audit`, `sync-summary`, `network-share` | Koneksi sumber tersimpan, token OAuth, jejak audit |
 
 **Registri Excel adalah satu sumber kebenaran untuk tiga hal sekaligus** —
 pengurai, templat yang dapat diunduh, dan pernyataan upsert. Sepuluh sumber
@@ -285,7 +285,7 @@ build yang datang di tengah pengukuran didahulukan dan pengukurannya berhenti.
 
 ### 2.6 Lapisan penyimpanan
 
-**PostgreSQL utama** menampung 67 tabel. Ketiga layanan Node terhubung ke basis
+**PostgreSQL utama** menampung 66 tabel. Ketiga layanan Node terhubung ke basis
 data yang sama; skema dimiliki aplikasi web, sedangkan sync-service dan
 scoring-service memakai klien ringan mereka sendiri dengan SQL tulisan tangan.
 
@@ -561,7 +561,7 @@ satu panggilan visi multi-halaman lagi.
 | Pemilihan suksesor | Detail jabatan | `position_picks` |
 | Pengecualian kandidat | Detail run | Penandaan beralasan saja; angka dan peringkat run tidak berubah, tidak ada run baru |
 | Ambang kesiapan dan pensiun | Tata Kelola | Berkas JSON, dibaca `readFileSync` |
-| Catatan MCU manual | Kandidat (isian "Keterangan MCU") | Kolom terenkripsi terpisah dari yang tersinkron |
+| Catatan MCU manual | Kandidat (isian "Keterangan MCU") | Kolom terpisah dari yang tersinkron |
 | Pertanyaan ke asisten | Panel chat | Aliran jawaban |
 
 #### E. Layanan kecerdasan buatan luar
@@ -609,12 +609,10 @@ menjelaskannya:
 | Templat Excel | Berkas unduhan per jenis sumber | `excel-template.ts` |
 
 Ekspor percakapan pantas dicatat satu hal: ia berjalan sepenuhnya di peramban
-dari riwayat yang sudah didekripsi panel, sehingga tidak menambah permukaan
+dari riwayat yang sudah dimuat panel, sehingga tidak menambah permukaan
 server maupun salinan kedua aturan izin — tetapi ia **memindahkan prosa tentang
 orang bernama ke berkas di luar kustodi aplikasi**. Karena itu dokumennya
-menyebut run yang memilikinya dan melabeli setiap pesan yang kembali dalam
-keadaan terkunci, alih-alih mencetak placeholder seolah-olah asisten yang
-mengatakannya.
+menyebut run yang memilikinya.
 
 ---
 
@@ -673,7 +671,6 @@ konsekuensi bila menyimpang.
 | Matematika AHP | `lib/ahp.ts` ↔ `scoring-service/src/ahp.ts` | Bobot berbeda antara yang ditampilkan dan yang dipakai |
 | Bobot aspek bawaan | `lib/scoring-criteria.ts` ↔ `scoring-service/src/ahp-weights.ts` | Sama |
 | Pemakuan waktu pg | `lib/db/pg-time.ts` ↔ salinan di kedua layanan | Pergeseran tujuh jam yang senyap |
-| Enkripsi amplop | `lib/crypto/envelope.ts` ↔ salinan dekripsi di kedua layanan | Kolom terlindungi terbaca NULL |
 | Normalisasi nama kompetensi | `lib/kamus-name-match.ts` ↔ `scoring-service/src/ahp-topsis-engine.ts` dan `sync-service/src/services/job-profile-competencies.ts` | Keputusan tersimpan di `kamus_competency_match_cache` tidak pernah ditemukan |
 
 Satu modul sengaja **tidak** digandakan: langkah peringkat akhir TOPSIS.
@@ -703,7 +700,6 @@ dalamnya menjalar paling jauh.
 | `lib/scoring-criteria.ts` | Editor tata kelola, panel konfigurasi run, penjelas | Nama kriteria kanonik dan bobot bawaan |
 | `lib/datetime.ts` | Setiap tempat yang mencetak waktu | Satu-satunya pemformat; `YYYY-MM-DD HH:mm` terpaku Asia/Jakarta |
 | `lib/candidate-visibility.ts` | Setiap kueri kandidat | Penyaring tombstone, dengan tiga kategori pemakaian |
-| `lib/crypto/key-store.ts` | Setiap penulisan kolom terenkripsi | Aturan tiga keadaan: plaintext / ciphertext / galat keras |
 | `lib/rerun-modes.ts` | Dialog, pohon, log audit, panel konfigurasi | Tabel mode penilaian ulang: satu yang dapat dibuat, empat mode lama yang hanya dibaca |
 | `lib/run-label.ts` | Setiap pembuatan dan penampilan label run | Pengupas label; harus mengenali **setiap** bentuk yang pernah ditulis |
 
@@ -740,7 +736,6 @@ memasangnya sebagai bind mount agar suntingan benar-benar sampai.
 | `lib/scoring-prompts.json` | web (Tata Kelola) | scoring-service | `POST /api/scoring/_reload-prompts` |
 | `lib/readiness-config.json` | web (Tata Kelola) | web + scoring-service | `POST /api/scoring/_reload-readiness` |
 | `lib/retirement-config.json` | web (Tata Kelola) | web | dibaca `readFileSync` tiap permintaan |
-| `secrets/master.key` | web (halaman Keamanan) | web (rw), sync + scoring (ro) | dibaca saat `ensureUnlocked()` |
 
 Satu jebakan tercatat di komentar compose dan pantas diulang: tanpa bind mount
 itu, scoring-service berjalan **secara senyap** di atas prompt dan ambang
@@ -770,22 +765,15 @@ cookie `pulse_tenant`. **Tidak ada RLS**; hampir setiap kueri menyaring
 `tenantId` secara eksplisit. Dokumen profil jabatan adalah satu-satunya hal yang
 bercakupan tidak langsung, lewat tabel banyak-ke-banyak `job_profile_tenants`.
 
-**Enkripsi.** Enkripsi amplop AES-256-GCM dengan format kabel
-`v1:<iv>:<tag>:<ct>`. Kustodi kunci berupa **berkas** di `PULSE_MASTER_KEY_FILE`,
-bukan baris basis data. Model ancaman yang dibeli: pemegang akses **basis data**
-tidak dapat membaca kolom terlindungi karena kuncinya tidak ada di sana;
-pemegang akses **sistem berkas** kontainer dapat.
-
-Terenkripsi saat ini: kata sandi koneksi sumber, isi pesan chat, dan 19 kolom
-kandidat termasuk kedua kolom catatan MCU.
-
-Yang **tidak dapat** dienkripsi, beserta alasannya: NPK adalah kunci join di
-±23 lokasi SQL mentah; `name` dicari dengan `ILIKE` dan diurutkan; `mcu_status`,
-`warning_level`, `education_level_rank`, dan `hav_quadrant` menggerakkan aturan
-filter di SQL. Sekitar 73% akses basis data dalam repositori ini adalah SQL
-tulisan tangan di tiga deployable tanpa lapisan akses data bersama, sehingga
-tidak ada titik cekik untuk enkripsi kolom transparan — setiap kolom terenkripsi
-tambahan adalah perubahan yang disengaja dan teraudit.
+**Penyimpanan data.** Tidak ada enkripsi tingkat aplikasi. Data kandidat
+(termasuk kedua kolom catatan MCU dan tanggal lahir), isi pesan chat,
+penempatan Talent Mapping beserta jejak auditnya, jejak perhitungan run, dan
+kata sandi koneksi basis data sumber tersimpan sebagai teks biasa di
+PostgreSQL. Perlindungannya bergantung pada kendali akses basis data — akun dan
+hak aksesnya, jaringan yang dapat menjangkaunya, serta penanganan cadangan —
+ditambah izin aplikasi di atas: siapa pun yang memegang akses baca langsung ke
+basis data dapat membaca seluruh isinya, jadi akses itu harus dibatasi sesempit
+mungkin.
 
 ---
 
@@ -828,7 +816,7 @@ beberapa salinan dari satu keputusan, tanpa apa pun yang memaksanya sepakat.
 | Berkas | Baris | Peran |
 |---|---|---|
 | `scoring-service/src/ahp-topsis-engine.ts` | ± 7.800 | Mesin enam aspek + AHP + TOPSIS — satu-satunya mesin penilaian |
-| `lib/db/schema.ts` | ± 3.100 | Definisi 67 tabel |
+| `lib/db/schema.ts` | ± 3.100 | Definisi 66 tabel |
 | `lib/scoring-engine.ts` | ± 2.600 | Pembuatan sesi, kolam, pengiriman, penilaian ulang |
 | `lib/pulse-data.ts` | 2.771 | Pembacaan agregat untuk halaman |
 | `scoring-service/src/scoring-engine.ts` | ± 300 | Pemuat bersama (sesi, posisi, pencocokan job profile), pita kesiapan, skor kuadran HAV. Mesin turnamen LLM yang dulu tinggal di sini sudah dihapus |

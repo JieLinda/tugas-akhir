@@ -265,7 +265,13 @@ export function explainComparison(c: Comparison): {
         ? ` (kecocokan ${fmtCloseness(r.ccA)} → ${fmtCloseness(r.ccB)}, ${fmtPp(r.deltaPp!)})`
         : '';
     const fin =
-      r.finalistChange === 'masuk' ? ' dan kini masuk N besar' : r.finalistChange === 'keluar' ? ' dan kini keluar dari N besar' : '';
+      r.finalistChange === 'masuk' ? ' dan kini masuk N besar' : r.finalistChange === 'keluar'
+        ? r.leftCause === 'overtaken_by_comparison'
+          ? ' dan kini keluar dari N besar karena disalip kandidat pembanding'
+          : r.leftCause === 'pool_shift'
+            ? ' dan kini keluar dari N besar karena skala pool bergeser'
+            : ' dan kini keluar dari N besar'
+        : '';
     const why = contributors.length ? ` Penyumbang terbesar: ${contributors.map(describeCrit).join('; ')}.` : '';
     perCandidate.set(r.candidateId, [{ id: 'T-05', candidateId: r.candidateId, text: `${head}${cc}${fin}.${why}` }]);
   }

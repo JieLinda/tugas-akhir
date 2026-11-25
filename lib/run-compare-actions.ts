@@ -196,6 +196,12 @@ export type RunSnapshotView = {
     added: { name: string; classification: string; outOfRange: boolean }[];
     skipped: { name: string | null; message: string }[];
     carriedDeleted: number | null;
+    /**
+     * Added candidates counted AT the parent's ideal on at least one criterion
+     * (the child ranks on the parent's TOPSIS yardstick). Null on a root or a
+     * child from before that rule.
+     */
+    topsisClamped: { name: string; criteria: string[]; above: string[] | null; below: string[] | null }[] | null;
   };
   config: RunConfigView;
   /** Nominal (before redistribution) and effective (after, Pers. 2.12) weights. */
@@ -276,6 +282,14 @@ async function getRunSnapshotActionImpl(runId: string): Promise<RunSnapshotView 
         ? snap.rerun.skipped.map((s: any) => ({ name: s.name ?? null, message: String(s.message ?? s.reason ?? '') }))
         : [],
       carriedDeleted: Number.isFinite(Number(info?.rerun?.carriedDeleted)) ? Number(info.rerun.carriedDeleted) : null,
+      topsisClamped: Array.isArray(info?.rerun?.topsis?.clamped)
+        ? info.rerun.topsis.clamped.map((c: any) => ({
+            name: run.pool.find((p) => p.candidateId === c.candidateId)?.name ?? 'Kandidat',
+            criteria: Array.isArray(c.criteria) ? c.criteria.map(String) : [],
+            above: Array.isArray(c.above) ? c.above.map(String) : null,
+            below: Array.isArray(c.below) ? c.below.map(String) : null,
+          }))
+        : null,
     },
     config: run.config,
     effectiveWeights: replay.available ? (replay.effectiveWeights as Record<string, number>) : null,

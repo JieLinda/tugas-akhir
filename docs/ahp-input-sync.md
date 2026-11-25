@@ -501,8 +501,7 @@ DATABASE_URL=postgres://… npx tsx scripts/audit-ahp-saaty.ts --out ./audit-ahp
 - **Hanya baca.** Semua kueri berjalan di dalam `BEGIN READ ONLY` … `ROLLBACK`,
   sehingga Postgres sendiri menolak penulisan apa pun. Skrip tidak memuat
   `INSERT`, `UPDATE`, atau `DELETE`, dan tidak mengimpor `lib/db` (yang
-  memasang hook dan kunci enkripsi). `ahp_config` dan `config_snapshot` tidak
-  terenkripsi, jadi kunci tidak dibutuhkan.
+  memasang hook waktu).
 - **Sumber (a):** `program_templates` dengan `ahp_config IS NOT NULL`. Kolom:
   `id`, tenant, `code`, nama, `updated_at`.
 - **Sumber (b):** `scoring_runs` dengan

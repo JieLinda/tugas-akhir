@@ -30,7 +30,7 @@ import {
 import { liveCandidate } from '@/lib/candidate-visibility';
 import { requirePermission } from '@/lib/rbac';
 import { getCurrentUser } from '@/lib/auth';
-import { getCurrentTenantId, TENANTS } from '@/lib/tenant';
+import { getCurrentTenantId, listTenants, liveTenantIdSet, tenantNameMap } from '@/lib/tenant';
 import { embedViaService } from '@/lib/job-family/embed';
 import {
   loadTitleVectors,
@@ -38,7 +38,6 @@ import {
   saveTitleVectors,
 } from '@/lib/job-family/title-embed-cache';
 import { getJobFamilyConfig } from '@/lib/job-family-actions';
-import { decryptCandidateRow, decryptCandidateValue } from '@/lib/candidate-crypto';
 import { withEffectiveHav } from '@/lib/hav-placements';
 import { isDemoMode } from '@/lib/app-mode';
 import { MASKED_CODE, MASKED_NPK } from '@/lib/app-mode-shared';
@@ -228,7 +227,7 @@ export async function getMatchTenantsAction(): Promise<MatchTenant[]> {
     ]),
   );
 
-  return TENANTS.map((t) => ({
+  return (await listTenants()).map((t) => ({
     tenantId: t.id,
     tenantName: t.name,
     companyIds: companyMap.get(t.id) ?? [],
@@ -538,10 +537,8 @@ type ScopedCandidate = {
 };
 
 function toScopedCandidate(r: ScopedCandidateRow): ScopedCandidate {
-  // candidate_name / candidate_current_position are encrypted at rest;
-  // sync_title comes from sync_positions and is plaintext.
-  const name = decryptCandidateValue(r.candidate_name) ?? '';
-  const currentPosition = decryptCandidateValue(r.candidate_current_position) ?? '';
+  const name = r.candidate_name ?? '';
+  const currentPosition = r.candidate_current_position ?? '';
   const title = (r.sync_title ?? currentPosition ?? '').trim();
   return {
     id: r.candidate_id,
@@ -552,8 +549,8 @@ function toScopedCandidate(r: ScopedCandidateRow): ScopedCandidate {
     positionId: r.position_id?.trim() || null,
     // Org context for the AI tier: two JDs with near-identical names are
     // usually told apart by the division/department they sit in.
-    department: decryptCandidateValue(r.candidate_department) ?? null,
-    division: decryptCandidateValue(r.candidate_division) ?? null,
+    department: r.candidate_department || null,
+    division: r.candidate_division || null,
   };
 }
 
@@ -567,7 +564,7 @@ export async function getJobFamilyMatchReport(opts?: {
 
   // Tenant scope: default to the current tenant (Pulse division). The UI can
   // add more tenants (cross-company inclusivity) via checkboxes.
-  const validTenantIds = new Set(TENANTS.map((t) => t.id));
+  const validTenantIds = await liveTenantIdSet();
   const requested = (opts?.tenantIds ?? []).filter((id) => validTenantIds.has(id));
   const selectedTenantIds = requested.length > 0 ? requested : [await getCurrentTenantId()];
 
@@ -1285,11 +1282,11 @@ async function getCandidateDetailActionImpl(
     LIMIT 1
   `);
 
-  const decryptedRow = decryptCandidateRow((base.rows as any[])[0]);
-  if (!decryptedRow) return null;
+  const baseRow = (base.rows as any[])[0];
+  if (!baseRow) return null;
   // Demo mode shows the candidate's demo copy (lib/demo/), photo removed.
   const demo = await isDemoMode();
-  const [row] = await forCurrentMode([decryptedRow as Record<string, any>], (r) => String(r.id), { onlyOn: false });
+  const [row] = await forCurrentMode([baseRow as Record<string, any>], (r) => String(r.id), { onlyOn: false });
   if (!row) return null;
   // The HAV in force (manual > upload > formula), as on every other candidate view.
   const [hav] = await withEffectiveHav([
@@ -1400,7 +1397,12 @@ async function getCandidateDetailActionImpl(
       currentPosition: row.current_position ?? null,
       department: row.department ?? null,
       division: row.division ?? null,
-      yearsExperience: row.years_experience ?? null,
+      yearsExperience:
+        row.years_experience == null || row.years_experience === ''
+          ? null
+          : Number.isNaN(Number(row.years_experience))
+            ? row.years_experience
+            : Number(row.years_experience),
       grade: row.grade ?? null,
       education: row.education ?? null,
       major: row.major ?? null,
@@ -1544,11 +1546,12 @@ async function getUnmatchedProfileDiagnosisActionImpl(input: {
 }): Promise<UnmatchedProfileDiagnosis | null> {
   await requirePermission('job_profiles.view');
 
-  const valid = new Set(TENANTS.map((t) => t.id));
+  const valid = await liveTenantIdSet();
   const req = (input.selectedTenantIds ?? []).filter((id) => valid.has(id));
   const selectedTenantIds = req.length > 0 ? req : [await getCurrentTenantId()];
   const selectedSet = new Set(selectedTenantIds);
-  const tenantName = (id: string | null) => TENANTS.find((t) => t.id === id)?.name ?? null;
+  const tenantNames = await tenantNameMap();
+  const tenantName = (id: string | null) => (id ? tenantNames.get(id) ?? null : null);
   const tenantIdsSql = () => sql.join(selectedTenantIds.map((id) => sql`${id}`), sql`, `);
 
   const prof = (
@@ -1850,7 +1853,7 @@ async function getUnmatchedCandidateDiagnosisActionImpl(
     ORDER BY c.id, sep.primary_position DESC NULLS LAST, sep.valid_from DESC NULLS LAST
     LIMIT 1
   `);
-  const row = decryptCandidateRow((base.rows as any[])[0]);
+  const row = (base.rows as any[])[0];
   if (!row) return null;
 
   const positionId: string | null = row.position_id?.trim() || null;
@@ -2189,8 +2192,8 @@ export async function setManualMatchAction(input: {
       .limit(1);
     if (!profile) return { ok: false, message: 'Dokumen job profile tidak ditemukan.' };
 
-    const name = decryptCandidateValue(cand.candidate_name) ?? '';
-    const currentPosition = decryptCandidateValue(cand.candidate_current_position) ?? '';
+    const name = cand.candidate_name ?? '';
+    const currentPosition = cand.candidate_current_position ?? '';
     const title = (cand.sync_title ?? currentPosition ?? '').trim();
     const positionId = cand.position_id?.trim() || null;
 
@@ -2295,7 +2298,7 @@ async function getSavedMatchReportActionImpl(opts?: {
 }
 
 async function buildSavedMatchReport(opts?: { tenantIds?: string[] }): Promise<JobFamilyMatchReport> {
-  const validTenantIds = new Set(TENANTS.map((t) => t.id));
+  const validTenantIds = await liveTenantIdSet();
   const requested = (opts?.tenantIds ?? []).filter((id) => validTenantIds.has(id));
   const selectedTenantIds = requested.length > 0 ? requested : [await getCurrentTenantId()];
 

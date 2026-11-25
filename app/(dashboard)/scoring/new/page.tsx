@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { DashboardHeader } from '@/components/dashboard-header';
 import { listProgramTemplates, positionProgramTemplates } from '@/lib/programs';
 import { getPositionManagementList, getGradeLevelsForTenant } from '@/lib/pulse-data';
-import { getCurrentTenantId, TENANTS } from '@/lib/tenant';
+import { getCurrentTenantId, listTenants } from '@/lib/tenant';
 import { ScoringWizard } from '@/components/scoring/scoring-wizard';
 import { requirePagePermission } from '@/lib/rbac';
 import { demoScrub } from '@/lib/demo/names';
@@ -67,7 +67,7 @@ export default async function NewScoringPage({
             initialPositionId={initialPositionId}
             positionPreselected={Boolean(params.positionId)}
             sessionId={sessionId}
-            tenants={TENANTS.map((t) => ({ id: t.id, name: t.name }))}
+            tenants={(await listTenants()).map((t) => ({ id: t.id, name: t.name }))}
             currentTenantId={tenantId}
           />
       </div>

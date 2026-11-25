@@ -207,7 +207,8 @@ database lokal itu. Database produksi tetap tidak terjangkau dari sini (G-9).
    kandidat), tampilkan sebagai "Skor sementara", dan jadikan S4. Penanda ini
    **tidak** mengubah angka. (Faktor MCU yang semula direncanakan ikut di S4
    sudah dihapus: data MCU tidak boleh menghitung ulang skor dalam bentuk apa
-   pun.)
+   pun.) Keadaan pemicunya sendiri hilang 2026-11-25 bersama enkripsi aplikasi;
+   lihat §6.13.
 10. **Narasi menahan peringkat (NFR-RR-05).** Narasi LLM dijalankan sebelum
     hasil ditulis. Rencana Fase B: tulis peringkat dan pool lebih dulu, baru
     narasi; catat durasi tiap tahap.
@@ -571,3 +572,22 @@ Angka verifikasi sesudahnya: `scripts/verify-rerun-requirements.ts` berisi 22
 cek (dari 24); rangkaian tes web — scoring berisi 111 tes, semuanya lulus, tanpa
 todo (diukur 2026-11-05). Angka di §6.9 dan §6.11 adalah catatan saat itu dan
 tidak diubah.
+
+### 6.13 Setelah Fase E: enkripsi aplikasi dihapus (2026-11-25)
+
+Enkripsi tingkat aplikasi (amplop AES-256-GCM `v1:`, berkas kunci master,
+tabel `app_encryption_keys`, halaman Keamanan) dihapus dari produk. Data
+kandidat dan hasil penilaian kini tersimpan sebagai teks biasa di PostgreSQL;
+data lama dikonversi sekali oleh `scripts/decrypt-all-sealed.ts` sebelum
+`drizzle/0099_drop_app_encryption.sql` menjatuhkan tabel kunci.
+
+Dampaknya pada audit ini hanya satu: keadaan yang memicu penanda "skor
+sementara" (§2 temuan 9) — kolom kandidat terenkripsi yang tidak terbaca
+karena kunci tidak tersedia, sehingga empat aspek menjadi konstanta — tidak
+dapat terjadi lagi. Engine tidak lagi menulis `run_info.encryption`, dan tidak
+ada kandidat yang dinilainya ditandai `provisional`; hanya kandidat bawaan dari
+induk lama yang mencatat penanda itu mewarisinya, karena angkanya angka induk.
+Sumber S4 di perbandingan dan lencana "Skor sementara" tetap membaca run lama
+yang mencatatnya (I-1: run selesai tidak diubah). Tidak ada run selesai yang
+angkanya berubah.
+

@@ -1,5 +1,5 @@
 import { getJobProfilesAction } from '@/lib/job-profile-actions';
-import { TENANTS } from '@/lib/tenant';
+import { listTenants } from '@/lib/tenant';
 import {
   JobProfileDocumentsClient,
   type JobProfileRow,
@@ -44,7 +44,7 @@ export default async function JobProfilesRoute() {
   return (
     <JobProfileDocumentsClient
       initialProfiles={profiles}
-      tenants={TENANTS.map((t) => ({ id: t.id, name: t.name }))}
+      tenants={(await listTenants()).map((t) => ({ id: t.id, name: t.name }))}
     />
   );
 }

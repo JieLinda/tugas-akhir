@@ -2,7 +2,7 @@ import { DashboardHeader } from '@/components/dashboard-header';
 import { Suspense } from 'react';
 import { Brain } from 'lucide-react';
 import { db } from '@/lib/db';
-import { tenants } from '@/lib/db/schema';
+import { listTenants } from '@/lib/tenant';
 import {
   listCompanyTenantMappings,
   getSyncStats,
@@ -13,14 +13,6 @@ import { SyncSettingsClient } from '@/components/settings/sync-settings-client';
 import { SourceConnectionsCard } from '@/components/settings/source-connections-card';
 import { CandidateDataCard } from '@/components/settings/candidate-data-card';
 
-/**
- * Two cards of "Pengaturan & Pemeliharaan" are HIDDEN, not deleted (by request,
- * 2026-11): "Koneksi Source Database" and the candidate-data card (clearing the
- * candidate pool). Their components and server actions are untouched, and a
- * stored source connection keeps being used by sync-service (an active row in
- * sync_source_connections still wins over DB_MPMDS_* / DB_MPMHRGA_*) — it just
- * cannot be edited from here. Flip either flag to bring its card back.
- */
 const SHOW_SOURCE_CONNECTIONS = false;
 const SHOW_CANDIDATE_MAINTENANCE = false;
 import { EmbeddingTabContent } from '@/components/settings/embedding-tab-content';
@@ -30,26 +22,14 @@ import { getJobFamilyConfig, getEmbeddingModelsAction } from '@/lib/job-family-a
 
 export const dynamic = 'force-dynamic';
 
-// One page, ordered by how often an operator needs each part:
-//   1. status + "Jalankan Sinkronisasi Penuh"      (every visit)
-//   2. ringkasan data per modul                    (every visit — is the data fresh?)
-//   3. pemetaan Company ID → Company            (decides where every synced row lands)
-//   4. unggah berkas sumber                        (the ONLY route for JD/kamus/HAV/MCU)
-//   5. sinkronisasi per modul                      (when one source fails)
-//   6. riwayat                                     (collapsed — per-module rows already show the last run)
-//   7. pengetahuan AI / embedding                  (collapsed — after new JDs; also reachable from Peta Job Family)
-//   8. pengaturan & pemeliharaan                   (collapsed — set once, or destructive)
-// The former "BERT" tab is section 7. Anything collapsed by default carries a
-// one-line summary in its header, so the common question is answered without
-// opening it. Every card has its own colour accent (CollapsibleCard `accent`)
-// — a light tint on the header band in one of four semantic tones —
-// so sections are distinguishable without the page turning into a palette.
+
 export default async function SyncSettingsPage() {
   await requirePagePermission('sync.manage');
   const [mappings, allTenants, stats, latestRuns, runHistory, jobFamilyConfig, embeddingModels] =
     await Promise.all([
       listCompanyTenantMappings(),
-      db.select({ id: tenants.id, name: tenants.name, slug: tenants.slug }).from(tenants).orderBy(tenants.name),
+      // Live companies only: a removed one (drizzle/0100) must not be offered as a mapping target.
+      listTenants().then((rows) => rows.map((t) => ({ id: t.id, name: t.name, slug: t.slug })).sort((x, y) => x.name.localeCompare(y.name))),
       getSyncStats(),
       getLatestSyncRunsAction(),
       listSyncRunsAction({ page: 1, pageSize: 25 }),

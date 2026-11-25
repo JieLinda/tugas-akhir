@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { Calculator, GripVertical, Hand, TriangleAlert } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -150,6 +150,8 @@ type GridProps = {
   onOpenCandidate: (candidateId: string) => void;
   /** A chip was dropped on a different square — the page opens the justification dialog. */
   onDropCandidate: (candidateId: string, quadrant: number) => void;
+  /** Extra hint icons rendered after the title's own "?" (the page's rules). */
+  titleHints?: ReactNode;
 };
 
 /**
@@ -175,6 +177,7 @@ export function HavSixteenBox({
   onSelectQuadrant,
   onOpenCandidate,
   onDropCandidate,
+  titleHints,
 }: GridProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overQuadrant, setOverQuadrant] = useState<number | null>(null);
@@ -337,6 +340,7 @@ export function HavSixteenBox({
                     : 'Anda hanya dapat melihat peta ini; memindahkan kandidat memerlukan akses Kelola kandidat.'}
               </p>
             </InfoHint>
+            {titleHints}
           </CardTitle>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1 text-[11px] text-muted-foreground">
             {TALENT_BOXES.map((box) => (

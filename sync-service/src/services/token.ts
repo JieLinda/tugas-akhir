@@ -1,9 +1,11 @@
-import { config } from "../config.js";
+import { config, SOURCE_SYNC_OFF_MESSAGE } from "../config.js";
 
 let cachedToken: string | null = null;
 let expiresAt = 0;
 
 export async function getApiToken(): Promise<string> {
+  // Every HR REST call (disciplinary, education, personal) asks for a token first.
+  if (!config.sourceSyncEnabled) throw new Error(SOURCE_SYNC_OFF_MESSAGE);
   const now = Date.now() / 1000;
   if (cachedToken && now < expiresAt - 30) {
     return cachedToken;

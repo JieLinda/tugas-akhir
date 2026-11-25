@@ -67,6 +67,7 @@ import { formatHavQuadrant, getHavQuadrantLabel, HAV_QUADRANTS } from '@/lib/hav
 import { HAV_SOURCE_LABEL } from '@/lib/hav-effective';
 import type { TalentPoolCandidate, TalentPoolData } from '@/lib/talent-pool-data';
 import { cn } from '@/lib/utils';
+import { disciplineLevel } from '@/lib/discipline';
 
 /** Per-tab persistence for the reveal toggle; clears when the tab closes. */
 const MASK_STORAGE_KEY = 'pulse:talent-pool:masked';
@@ -101,21 +102,11 @@ function mcuTone(v: string | null): Tone {
   return MCU_TONE[v] ?? 'neutral';
 }
 
-const DISCIPLINE_TONE: Record<string, Tone> = {
-  CLEAR: 'good',
-  // ST is the lightest tier and the Talent Pool rule admits it alongside CLEAR,
-  // so it must not look like a disqualification.
-  ST: 'warn',
-  WARNING: 'warn',
-  SP_UNDER_2_YEARS: 'warn',
-  ACTIVE_SP: 'bad',
-  SP3: 'bad',
-  SP_FIRST_LAST: 'bad',
-  SANCTION: 'bad',
-};
+// Tones come with the levels (lib/discipline.ts): CLEAR good; ST and an SP that
+// ended ≥ 2 years ago amber (the default rule admits both); heavier ones red.
 function disciplineTone(v: string | null): Tone {
   if (!v) return 'neutral';
-  return DISCIPLINE_TONE[String(v).toUpperCase()] ?? 'neutral';
+  return disciplineLevel(v)?.tone ?? 'neutral';
 }
 
 function paTone(letter: string): Tone {

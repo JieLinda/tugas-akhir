@@ -46,10 +46,9 @@ export type LiveFallback = {
  * - `run`: the quadrant the run scored, as it recorded it (null = the candidate
  *   had no HAV at the time);
  * - `not_recorded`: the row stores no per-criterion record (a legacy row of
- *   another method, or a detail-less seeder row);
- * - `locked`: recorded, but sealed and the encryption key is not available.
+ *   another method, or a detail-less seeder row).
  */
-export type HavQuadrantSource = 'run' | 'not_recorded' | 'locked';
+export type HavQuadrantSource = 'run' | 'not_recorded';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
@@ -69,11 +68,9 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  * (`ahpTopsis`, whose top-level `havQuadrant` is the raw string the engine
  * scored). A row without it may hold `havQuadrant: null` regardless, so its null
  * means "not recorded", not "no HAV" — hence the marker check rather than
- * reading the field alone. A value still in the `v1:` sealed format after the
- * snapshot was decrypted could not be opened (key unavailable).
+ * reading the field alone.
  *
- * @param details the row's stored details, already through
- *                `decryptCandidateDetailsSnapshot`; null when it has none
+ * @param details the row's stored details; null when it has none
  */
 export function recordedHavQuadrant(
   details: Record<string, unknown> | null | undefined,
@@ -83,9 +80,7 @@ export function recordedHavQuadrant(
   }
   const v = details.havQuadrant;
   if (v == null || v === '') return { quadrant: null, source: 'run' };
-  const s = String(v);
-  if (s.startsWith('v1:')) return { quadrant: null, source: 'locked' };
-  return { quadrant: s, source: 'run' };
+  return { quadrant: String(v), source: 'run' };
 }
 
 function finiteNumber(v: unknown): number | null {

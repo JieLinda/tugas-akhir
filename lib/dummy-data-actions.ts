@@ -10,7 +10,6 @@ import { logAudit } from '@/lib/audit';
 import { ensureLocalUser } from '@/lib/pulse-data';
 import { requirePermission } from '@/lib/rbac';
 import { liveCandidate } from '@/lib/candidate-visibility';
-import { decryptCandidateRows } from '@/lib/candidate-crypto';
 
 // Helper from candidate-form-dialog.tsx
 function getProficiencyFromScore(score?: number | null): string {
@@ -43,12 +42,12 @@ export async function populateDummyCompetenciesAction() {
 
   const candidatesWithManualCompetencies = new Set(existingCandidateCompetencies.map((c) => c.candidateId));
 
-  const candidatesWithoutManualCompetencies = decryptCandidateRows(
+  const candidatesWithoutManualCompetencies = (
     await db
       .select({ id: schema.candidates.id, name: schema.candidates.name })
       .from(schema.candidates)
       // Tombstones are skipped: this seeds competency rows that feed AHP/TOPSIS.
-      .where(and(eq(schema.candidates.tenantId, tenantId), liveCandidate())),
+      .where(and(eq(schema.candidates.tenantId, tenantId), liveCandidate()))
   ).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
 
   const candidatesToAddCompetencies = candidatesWithoutManualCompetencies.filter(

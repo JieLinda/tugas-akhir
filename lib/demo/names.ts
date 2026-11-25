@@ -2,8 +2,6 @@ import 'server-only';
 
 import { sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { decryptCandidateValue } from '@/lib/candidate-crypto';
-import { ensureUnlocked } from '@/lib/crypto/key-store';
 import { isDemoMode } from '@/lib/app-mode';
 import { assignUniqueInitials } from '@/lib/demo/initials';
 import {
@@ -14,7 +12,7 @@ import {
   type ScrubOptions,
 } from '@/lib/demo/name-scrub';
 import { loadDemoCopies } from '@/lib/demo/store';
-import { TENANTS } from '@/lib/tenant';
+import { listAllTenants } from '@/lib/tenant';
 
 /**
  * Demo mode — candidate names become unique initials in everything the server
@@ -39,7 +37,7 @@ import { TENANTS } from '@/lib/tenant';
  * candidate keeps the same initials on every page and a pool that spans units
  * cannot show one pair twice. The index is rebuilt only when `candidates` or
  * `candidates_dupp` changes (row count, newest timestamps), not per request:
- * building it decrypts every name.
+ * building it reads every name.
  */
 
 type CacheEntry = { fingerprint: string; index: DemoNameIndex };
@@ -60,15 +58,18 @@ type CacheState = {
  */
 const FINGERPRINT_TTL_MS = 1_000;
 
-// On globalThis for the same reason lib/db and the key store are: Next.js dev
+// On globalThis for the same reason lib/db is: Next.js dev
 // HMR would otherwise drop the cache on every edit.
 const globalForDemo = globalThis as unknown as { __pulseDemoNames?: CacheState };
 const cache: CacheState =
   globalForDemo.__pulseDemoNames ??
   (globalForDemo.__pulseDemoNames = { entry: null, checkedAt: 0, building: null });
 
-/** Business-unit names must never be read as somebody's name. */
-const NEVER_MATCH = TENANTS.flatMap((tenant) => [tenant.name, tenant.slug]);
+/** Business-unit names must never be read as somebody's name. Companies are
+ *  editable, so this is read whenever the index is rebuilt. */
+async function neverMatch(): Promise<string[]> {
+  return (await listAllTenants()).flatMap((tenant) => [tenant.name, tenant.slug]);
+}
 
 async function currentFingerprint(): Promise<string> {
   const res = await db.execute(sql`
@@ -86,12 +87,13 @@ async function currentFingerprint(): Promise<string> {
   } catch {
     // drizzle/0093 not applied: no copies, nothing to fingerprint.
   }
-  return `${row?.n ?? 0}|${row?.created ?? ''}|${row?.updated ?? ''}|${copies}`;
+  // The company names are the index's stop list, and companies can be added
+  // or removed from the header — a change there must rebuild the index too.
+  const companies = (await listAllTenants()).map((t) => `${t.id}:${t.name}:${t.deletedAt ?? ''}`).join(',');
+  return `${row?.n ?? 0}|${row?.created ?? ''}|${row?.updated ?? ''}|${copies}|${companies}`;
 }
 
 async function buildIndex(fingerprint: string): Promise<CacheEntry> {
-  // Names are encrypted; a cold process must unwrap the key before reading them.
-  await ensureUnlocked();
   const [res, copies] = await Promise.all([
     db.execute(sql`
       SELECT id::text AS id, name
@@ -101,7 +103,7 @@ async function buildIndex(fingerprint: string): Promise<CacheEntry> {
     loadDemoCopies(),
   ]);
   const people = (res.rows as Array<{ id: string; name: string | null }>).flatMap((row) => {
-    const real = decryptCandidateValue(row.name);
+    const real = row.name || null;
     const shown = copies.get(row.id)?.name?.trim() || real;
     if (!shown) return [];
     return [{ id: row.id, name: shown, aliases: real && real !== shown ? [real] : [] }];
@@ -112,7 +114,7 @@ async function buildIndex(fingerprint: string): Promise<CacheEntry> {
       const value = initials.get(p.id);
       return value ? [{ id: p.id, name: p.name, aliases: p.aliases, initials: value }] : [];
     }),
-    { neverMatch: NEVER_MATCH },
+    { neverMatch: await neverMatch() },
   );
   return { fingerprint, index };
 }

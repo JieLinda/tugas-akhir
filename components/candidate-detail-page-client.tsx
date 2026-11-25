@@ -59,6 +59,7 @@ import type { CandidateTalentPoolStatus } from '@/lib/talent-pool-data';
 import { cn } from '@/lib/utils';
 import { InfoHint } from '@/components/ui/info-hint';
 import type { CandidateProfile } from '@/lib/talent-data';
+import { DISCIPLINE_LEVELS, disciplineLevel } from '@/lib/discipline';
 
 /**
  * Candidate detail.
@@ -178,11 +179,11 @@ function mcuTone(status: string): Tone {
   return 'muted';
 }
 
+// `status` is the LABEL (disciplineLabel), so the level is found by label first.
 function disciplineTone(status: string): Tone {
   if (!status || status === '-') return 'muted';
-  if (/clear|clean|bersih/i.test(status)) return 'good';
-  if (/ringan|sp\s*1/i.test(status)) return 'warn';
-  return 'bad';
+  const level = DISCIPLINE_LEVELS.find((l) => l.label === status) ?? disciplineLevel(status);
+  return level?.tone ?? 'bad';
 }
 
 function behaviorTone(recommendation: string | null): Tone {

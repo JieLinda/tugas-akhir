@@ -19,8 +19,7 @@
  * Safety: every query runs inside BEGIN READ ONLY … ROLLBACK, and the script
  * checks `transaction_read_only = on` before reading — Postgres itself refuses
  * any write. There is no INSERT, UPDATE or DELETE in this file, and it does
- * not import lib/db (no time hooks, no encryption keys; neither column is
- * encrypted). Writes only the report files under --out.
+ * not import lib/db (no time hooks). Writes only the report files under --out.
  */
 import fs from 'node:fs';
 import path from 'node:path';

@@ -18,6 +18,7 @@
 
 import { AHP_CRITERIA_ORDER, type AhpCriterionKey } from "./ahp-weights.js";
 import type { PositionBasis } from "./position-basis.js";
+import { leftTopNCauseOf, type LeftTopNCause, type RecordedTopsis } from "./topsis-ranking.js";
 
 /**
  * Which models a run used. Recorded on every AHP run (`run_info.models`) and
@@ -172,6 +173,11 @@ export function composeChildResultList(input: {
   parentFinalistIds: Set<string>;
   /** Empty on a root. */
   comparisonIds: Set<string>;
+  /**
+   * The parent's whole-pool rank per candidate, to say WHY a parent finalist
+   * left the top N. Omitted: the cause is not decided (null).
+   */
+  parentRankById?: Map<string, number>;
 }): {
   listed: {
     candidateId: string;
@@ -180,6 +186,7 @@ export function composeChildResultList(input: {
     comparison: boolean;
     enteredTopN: boolean;
     leftTopN: boolean;
+    leftTopNCause: LeftTopNCause | null;
   }[];
 } {
   const isChild = input.parentFinalistIds.size > 0 || input.comparisonIds.size > 0;
@@ -193,17 +200,24 @@ export function composeChildResultList(input: {
     )
     .map(({ candidateId, poolRank }) => {
       const belowCut = poolRank > input.topN;
+      const leftTopN = isChild && belowCut && input.parentFinalistIds.has(candidateId);
       return {
         candidateId,
         poolRank,
         belowCut,
         comparison: input.comparisonIds.has(candidateId),
         enteredTopN: isChild && !belowCut && !input.parentFinalistIds.has(candidateId),
-        leftTopN: isChild && belowCut && input.parentFinalistIds.has(candidateId),
+        leftTopN,
+        leftTopNCause:
+          leftTopN && input.parentRankById
+            ? leftTopNCauseOf(candidateId, input.rankedIds.slice(0, poolRank - 1), input.parentRankById)
+            : null,
       };
     });
   return { listed };
 }
+
+export { leftTopNCauseOf, type LeftTopNCause };
 
 /**
  * The criteria a child ranks on: the PARENT's, never re-evaluated.
@@ -319,6 +333,8 @@ export function buildFrozenRecord(input: {
   positionBasis?: PositionBasis | null;
   /** The models this run used. */
   models?: RunModels | null;
+  /** The TOPSIS yardstick this run ranked with (a child: its parent's). */
+  topsis?: RecordedTopsis | null;
 }) {
   const f = input.frozen;
   return {
@@ -361,5 +377,6 @@ export function buildFrozenRecord(input: {
     },
     positionBasis: input.positionBasis ?? null,
     models: input.models ?? null,
+    topsis: input.topsis ?? null,
   };
 }

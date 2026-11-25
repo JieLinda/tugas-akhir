@@ -137,7 +137,6 @@ export function runHavText(
   options: { withHash?: boolean } = {},
 ): string {
   if (candidate.havQuadrantSource === 'not_recorded') return 'tidak tercatat di run';
-  if (candidate.havQuadrantSource === 'locked') return 'terkunci';
   if (!candidate.havQuadrant) return '—';
   const text = formatHavQuadrant(candidate.havQuadrant);
   return options.withHash ? `#${text}` : text;

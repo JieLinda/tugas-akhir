@@ -21,11 +21,6 @@ services:
       # edits stay inside this container and never reach scoring.
       - ./lib/scoring-prompts.json:/app/lib/scoring-prompts.json
       - ./lib/readiness-config.json:/app/lib/readiness-config.json
-      # The master encryption key. WRITABLE here because the Keamanan page
-      # generates and rotates it; mounted read-only into sync below. It must
-      # live on the HOST, not in the image: a key inside a container layer is
-      # lost on every rebuild, which would orphan every encrypted value.
-      - ./secrets:/app/secrets
     ports:
       - "3360:3000"
     restart: unless-stopped
@@ -52,10 +47,6 @@ services:
       # Persist files uploaded through the Sinkronisasi page. Without this they
       # live in the container's ephemeral layer and vanish on every restart.
       - sync-uploads:/app/uploads
-      # Read-only: this service reads the master key to decrypt the stored MSSQL
-      # password, but never writes it. Without this mount the Monday 01:00 cron
-      # cannot decrypt and silently falls back to DB_*_PASSWORD from .env.
-      - ./secrets:/app/secrets:ro
     restart: unless-stopped
     depends_on:
       - vector-db
@@ -80,7 +71,6 @@ services:
       # readiness thresholds, and Tata Kelola edits never reach it.
       - ./lib/scoring-prompts.json:/app/lib/scoring-prompts.json:ro
       - ./lib/readiness-config.json:/app/lib/readiness-config.json:ro
-      - ./secrets:/app/secrets:ro
     ports:
       - "3362:8002"
     restart: unless-stopped

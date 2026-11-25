@@ -17,6 +17,7 @@ import {
   type FieldInputKind,
 } from '@/lib/candidate-field-values';
 import type { CandidateAttributeField, FilterOperator } from '@/lib/db/schema';
+import { operatorsForField, validateFilterTree } from '@/lib/filter-rules';
 
 /**
  * A caption the host page attaches to individual rules — e.g. the Talent Pool
@@ -48,10 +49,21 @@ function defaultValueFor(field: CandidateAttributeField, isMulti: boolean): Filt
   return opts && opts.length > 0 ? opts[0].value : '';
 }
 
-/** Return a copy of the rule with a new field (and a fresh, valid value). */
+/**
+ * Return a copy of the rule with a new field (and a fresh, valid value). An
+ * operator the new field cannot use (≥ on Status Disiplin) becomes `in`, the
+ * one every field supports.
+ */
 function withField(rule: FilterRule, field: CandidateAttributeField): FilterRule {
-  const isMulti = MULTI_OPERATORS.includes(rule.operator);
-  return { ...rule, field, value: defaultValueFor(field, isMulti) };
+  const operator = operatorsForField(field).includes(rule.operator) ? rule.operator : 'in';
+  const isMulti = MULTI_OPERATORS.includes(operator);
+  return { ...rule, field, operator, value: defaultValueFor(field, isMulti) };
+}
+
+/** What is wrong with this one rule, without the "Aturan 1 (…):" prefix — or null. */
+function ruleProblem(rule: FilterRule): string | null {
+  const [first] = validateFilterTree({ kind: 'group', op: 'and', children: [{ kind: 'rule', rule }] });
+  return first ? first.replace(/^[^:]*:\s*/, '') : null;
 }
 
 /** Return a copy of the rule with a new operator (converting the value shape). */
@@ -250,6 +262,7 @@ function RuleRow({
   const options = mergeFieldOptions(rule.field, fieldValues[rule.field]);
   const enabled = rule.enabled !== false;
   const note = ruleNote?.(rule);
+  const problem = ruleProblem(rule);
 
   return (
     <div
@@ -298,7 +311,11 @@ function RuleRow({
         <Combobox
           value={rule.operator}
           onValueChange={(value) => onChange(withOperator(rule, value as FilterOperator))}
-          options={ALL_OPERATORS.map((operator) => ({ value: operator, label: OPERATOR_LABELS[operator] }))}
+          // Only the operators this field can be judged by; a stored rule that
+          // already uses another one keeps it listed so it can be seen and changed.
+          options={ALL_OPERATORS.filter(
+            (operator) => operatorsForField(rule.field).includes(operator) || operator === rule.operator,
+          ).map((operator) => ({ value: operator, label: OPERATOR_LABELS[operator] }))}
           placeholder="Pilih operator"
           searchPlaceholder="Cari operator..."
           emptyText="Operator tidak ditemukan."
@@ -315,6 +332,11 @@ function RuleRow({
           onChange={(value) => onChange({ ...rule, value })}
         />
       </div>
+      {problem && (
+        <p className="text-[11px] font-medium text-destructive sm:col-span-4 sm:order-last" role="alert">
+          {problem}
+        </p>
+      )}
       <div className="flex items-end gap-1">
         <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onMoveUp} disabled={!canMoveUp}>
           <ChevronUp className="h-3.5 w-3.5" />
@@ -591,6 +613,7 @@ export function FilterTreeView({
     // nobody is judged by.
     const enabled = rule.enabled !== false;
     const note = ruleNote?.(rule);
+    const problem = ruleProblem(rule);
     return (
       <div className={cn('rounded-lg border p-2.5 text-sm', !enabled && 'border-dashed bg-muted/30')}>
         <div className={cn('flex flex-wrap items-center gap-2', !enabled && 'opacity-60')}>
@@ -616,6 +639,7 @@ export function FilterTreeView({
           {rule.message && <span className="ml-auto text-xs italic text-muted-foreground">{rule.message}</span>}
         </div>
         {note && <div className="mt-1.5">{note}</div>}
+        {problem && <p className="mt-1.5 text-[11px] font-medium text-destructive">{problem}</p>}
       </div>
     );
   }

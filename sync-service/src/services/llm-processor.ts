@@ -1,36 +1,115 @@
 /**
- * LLM-powered PDF processor — extracts structured job-profile data
- * from raw PDF text via a vLLM / OpenAI-compatible endpoint using LangChain.
+ * LLM-powered PDF processor — extracts structured job-profile data from the
+ * page images of a (flat, image-only) job-profile PDF.
+ *
+ * TEMPORARY: this calls an ANTHROPIC-compatible Messages endpoint
+ * (`POST {base}/v1/messages`) instead of the OpenAI-compatible
+ * `/chat/completions` it used through LangChain's ChatOpenAI. The env vars are
+ * unchanged — LLM_BASE_URL / LLM_API_KEY / LLM_MODEL now name the Anthropic
+ * endpoint, key and model. LLM_BASE_URL may be given with or without the
+ * trailing `/v1` (or as the full `/v1/messages` URL); see `messagesUrl()`.
+ * To go back, restore the ChatOpenAI version from git — nothing else in the
+ * service reads these settings.
+ *
+ * Plain `fetch` rather than `@anthropic-ai/sdk`: the switch is temporary, and
+ * adding a dependency means regenerating package-lock.json for it.
  */
-import { ChatOpenAI } from "@langchain/openai";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { config } from "../config.js";
 import type { ExtractedJobProfile } from "../types.js";
 
-// ── LLM singletons, one per temperature ──────────────────────
+const ANTHROPIC_VERSION = "2023-06-01";
+
+// Non-streaming request, so keep the cap where a single HTTP response stays
+// well inside timeouts. Successful extractions here are ≤ ~7.3k characters
+// (≈ 2–3k tokens), so this is ample headroom, not a constraint.
+const MAX_TOKENS = 16000;
+
+// Generous: a multi-page vision request on a model that thinks before answering
+// can take minutes. A timeout is retried by `extractWithRetries` like any error.
+const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** `{base}/v1/messages`, accepting a base with or without `/v1` or the full URL. */
+function messagesUrl(): string {
+  const base = config.llm.baseUrl.trim().replace(/\/+$/, "");
+  if (/\/messages$/.test(base)) return base;
+  if (/\/v1$/.test(base)) return `${base}/messages`;
+  return `${base}/v1/messages`;
+}
+
+// ── Temperature ──────────────────────────────────────────────
 //
-// Keyed by temperature rather than a single instance, because a RETRY has to be
-// able to differ from the attempt that failed. At temperature 0 the same images
-// produce the same tokens, so re-sending a document whose JSON came back
-// malformed reproduces the identical malformed JSON — the retry would cost
-// another full vision call and buy nothing. Attempt 1 still runs at 0, which is
-// what keeps a successful extraction reproducible.
+// The ChatOpenAI version raised the temperature on retries, so that a retry
+// after malformed JSON would not reproduce the same malformed JSON. It is NOT
+// sent here: current Claude models reject `temperature` with a 400, which would
+// fail every extraction. Their default sampling already varies between calls,
+// so a retry still gets a different answer. The caller keeps passing
+// `temperature`; it is accepted and ignored.
 
-const models = new Map<number, ChatOpenAI>();
+type AnthropicContentBlock = { type: string; text?: string };
+type AnthropicResponse = {
+  content?: AnthropicContentBlock[];
+  stop_reason?: string | null;
+  stop_details?: { category?: string | null; explanation?: string | null } | null;
+};
 
-function getModel(temperature = 0): ChatOpenAI {
-  const existing = models.get(temperature);
-  if (existing) return existing;
-  const created = new ChatOpenAI({
-    model: config.llm.model,
-    configuration: {
-      baseURL: config.llm.baseUrl,
-      apiKey: config.llm.apiKey || "not-needed",
-    },
-    temperature
-  });
-  models.set(temperature, created);
-  return created;
+async function callMessages(
+  system: string,
+  userContent: unknown[],
+): Promise<{ text: string; stopReason: string | null }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(messagesUrl(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": config.llm.apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify({
+        model: config.llm.model,
+        max_tokens: MAX_TOKENS,
+        system,
+        messages: [{ role: "user", content: userContent }],
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(`LLM request timed out after ${REQUEST_TIMEOUT_MS / 1000}s (${messagesUrl()})`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const bodyText = await res.text();
+  if (!res.ok) {
+    throw new Error(`LLM HTTP ${res.status} from ${messagesUrl()}: ${bodyText.slice(0, 500)}`);
+  }
+  let body: AnthropicResponse;
+  try {
+    body = JSON.parse(bodyText) as AnthropicResponse;
+  } catch {
+    throw new Error(`LLM returned a non-JSON body: ${bodyText.slice(0, 500)}`);
+  }
+
+  if (body.stop_reason === "refusal") {
+    const d = body.stop_details;
+    throw new Error(
+      `LLM declined the request (stop_reason=refusal${d?.category ? `, category=${d.category}` : ""})` +
+        (d?.explanation ? `: ${d.explanation}` : ""),
+    );
+  }
+
+  // Only text blocks are the answer; models that think also return `thinking`
+  // blocks, which must not be mistaken for the JSON.
+  const text = (body.content ?? [])
+    .filter((b) => b.type === "text" && typeof b.text === "string")
+    .map((b) => b.text)
+    .join("");
+  return { text, stopReason: body.stop_reason ?? null };
 }
 
 // ── System prompt ────────────────────────────────────────────
@@ -169,35 +248,25 @@ export async function extractJobProfile(
   images: string[],
   opts: { temperature?: number } = {},
 ): Promise<ExtractedJobProfile> {
-  const llm = getModel(opts.temperature ?? 0);
+  void opts; // temperature is not sent — see "Temperature" above
 
-  const contentParts: any[] = [
-    {
-      type: "text",
-      text: "Berikut adalah semua gambar halaman dari dokumen PDF Job Profile. Ekstrak data terstruktur darinya ke dalam format JSON yang tepat sesuai aturan sistem di atas.",
-    },
-  ];
+  // Images first, instruction after, in page order.
+  const contentParts: unknown[] = images.map((imgBase64) => ({
+    type: "image",
+    source: { type: "base64", media_type: "image/png", data: imgBase64 },
+  }));
+  contentParts.push({
+    type: "text",
+    text: "Berikut adalah semua gambar halaman dari dokumen PDF Job Profile. Ekstrak data terstruktur darinya ke dalam format JSON yang tepat sesuai aturan sistem di atas.",
+  });
 
-  for (const imgBase64 of images) {
-    contentParts.push({
-      type: "image_url",
-      image_url: {
-        url: `data:image/png;base64,${imgBase64}`,
-      },
-    });
+  const { text: content, stopReason } = await callMessages(SYSTEM_PROMPT, contentParts);
+  if (stopReason === "max_tokens") {
+    // Say so explicitly rather than let it surface as a JSON.parse error.
+    throw new Error(
+      `LLM output hit max_tokens (${MAX_TOKENS}) — keluaran terpotong, panjang=${content.length}`,
+    );
   }
-
-  const response = await llm.invoke([
-    new SystemMessage(SYSTEM_PROMPT),
-    new HumanMessage({
-      content: contentParts,
-    }),
-  ]);
-
-  const content =
-    typeof response.content === "string"
-      ? response.content
-      : JSON.stringify(response.content);
 
   // Extract JSON from the response (handle markdown fences, etc.)
   const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/) ||

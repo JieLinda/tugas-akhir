@@ -265,6 +265,12 @@ export function ExclusionSummaryBar({
         <span className="text-[10px] text-muted-foreground">
           Hanya penandaan forum — skor, peringkat, dan snapshot run ini tidak berubah.
         </span>
+        {exclusions.some((e) => e.inheritedFromRunId) && (
+          <span className="text-[10px] text-muted-foreground">
+            {exclusions.filter((e) => e.inheritedFromRunId).length} tanda diwarisi dari run induk saat
+            run ini dibuat; membatalkannya di sini tidak mengubah run induk.
+          </span>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -280,6 +286,14 @@ export function ExclusionSummaryBar({
               · {exclusionReasonLabel(e.reason)}
               {e.note ? `: ${e.note}` : ''}
             </span>
+            {e.inheritedFromRunId && (
+              <span
+                className="rounded bg-amber-500/10 px-1 text-[9px] font-semibold text-amber-800 dark:text-amber-300"
+                title={`Ditandai di run ${e.inheritedFromRunLabel ?? e.inheritedFromRunId.slice(0, 8)} lalu diwarisi run ini.`}
+              >
+                diwarisi
+              </span>
+            )}
             <button
               type="button"
               onClick={() => onUndo(e.candidateId)}

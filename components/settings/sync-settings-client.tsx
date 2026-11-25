@@ -378,7 +378,11 @@ type FileSource = {
   desc: string;
   /** What one upload replaces, when it replaces rather than adds. */
   replaces?: string;
-  /** Downloadable starter workbook, for the sources with a strict layout. */
+  /**
+   * Downloadable starter file, for the sources with a strict layout: an Excel
+   * workbook, or an editable Word document for the PDF sources (filled in, then
+   * saved as PDF). The link label follows the file type.
+   */
   template?: { href: string; filename: string };
   /**
    * Optional tenant assignment (only meaningful for Job Profile PDFs). Chosen
@@ -392,13 +396,18 @@ const FILE_SOURCES: FileSource[] = [
   {
     kind: 'job-profiles', syncKey: 'job-profiles', label: 'Job Profile', icon: FileText,
     accept: '.pdf', multiple: true, slow: true,
-    desc: 'Profil jabatan dari PDF, diekstrak dengan LLM.',
+    desc: 'Profil jabatan dari PDF, diekstrak dengan LLM. Beri nama berkas: KODE_POSISI JD-XXX-001 Nama Jabatan.pdf — kode posisi di depan dipakai untuk mencocokkan dokumen ke posisinya.',
     tenantScoped: true,
+    // Editable Word file: fill it in, then Save As → PDF (scripts/gen-pdf-templates.ts).
+    template: { href: '/templates/template-job-profile.docx', filename: 'template-job-profile.docx' },
   },
   {
     kind: 'kamus', syncKey: 'kamus-kompetensi', label: 'Kamus Kompetensi', icon: BookOpen,
     accept: '.pdf', multiple: true, slow: false,
-    desc: 'Kamus kompetensi teknis — kode, definisi, dan 4 level proficiency.',
+    desc: 'Kamus kompetensi teknis — kode, definisi, dan 4 level proficiency. Satu kompetensi per halaman.',
+    // The parser reads the PDF by text position, so the Word template keeps the
+    // exact layout it needs (scripts/gen-pdf-templates.ts says which parts).
+    template: { href: '/templates/template-kamus-kompetensi.docx', filename: 'template-kamus-kompetensi.docx' },
   },
   {
     kind: 'hav', syncKey: 'hav', label: 'HAV Quadrant', icon: Grid3x3,
@@ -602,6 +611,8 @@ function FileSourceTile({
         if (!res.ok) throw new Error(await res.text());
         const data = (await res.json()) as {
           success?: boolean; message?: string; synced?: number; total?: number;
+          /** Rows stored but pointing at a reference that does not exist yet (sync-service SyncResult). */
+          warnings?: string[];
         };
         // Only an explicit success:false means failure — see triggerSync.
         if (data.success === false) throw new Error(data.message ?? 'Sinkronisasi gagal');
@@ -616,6 +627,16 @@ function FileSourceTile({
               ? `${data.synced.toLocaleString('id-ID')} dari ${data.total?.toLocaleString('id-ID')} record. `
               : '') + 'File unggahan sudah dihapus.',
         });
+        // Stored, but not connected yet: an unmapped Company ID, an NPK missing
+        // from Data Karyawan, an unknown position or competency code. Its own
+        // toast (not a line inside the success one) because it is what the user
+        // has to act on.
+        if (data.warnings && data.warnings.length > 0) {
+          toast.warning(`${source.label}: ${data.warnings.length} peringatan data`, {
+            description: data.warnings.join(' • '),
+            duration: 20_000,
+          });
+        }
         onCompleted();
       }
       if (ignored > 0) {
@@ -748,7 +769,9 @@ function FileSourceTile({
           className="mt-2 inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
         >
           <Download className="h-3 w-3" />
-          Unduh template Excel
+          {source.template.filename.endsWith('.docx')
+            ? 'Unduh template Word (simpan sebagai PDF)'
+            : 'Unduh template Excel'}
         </a>
       )}
 
@@ -1099,12 +1122,22 @@ export function SyncSettingsClient({ mappings, tenants, stats, latestRuns, initi
         ? 'Masih memeriksa koneksi ke layanan sinkronisasi…'
         : 'Layanan sinkronisasi tidak dapat dihubungi. Periksa container sync / SYNC_SERVICE_URL, lalu muat ulang halaman.';
 
+  // Source syncs switched off in the service (SOURCE_SYNC_ENABLED=false, e.g. a
+  // demo away from the company network): only the full sync is disabled — the
+  // uploads and everything they feed keep working.
+  const [sourceSyncOff, setSourceSyncOff] = useState(false);
+  const sourceSyncReason = sourceSyncOff
+    ? 'Sinkronisasi dari sumber (MSSQL / API HR / folder bersama) dinonaktifkan di layanan sinkronisasi (SOURCE_SYNC_ENABLED=false). Unggah berkas di bawah tetap berjalan dan langsung diteruskan ke Company.'
+    : null;
+
   // Check sync service health on mount
   useEffect(() => {
     const check = async () => {
       try {
         const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_PATH}/api/sync/health`, { signal: AbortSignal.timeout(3000) });
         setServiceStatus(res.ok ? 'online' : 'offline');
+        const body = (await res.json().catch(() => null)) as { sourceSync?: boolean } | null;
+        setSourceSyncOff(body?.sourceSync === false);
       } catch {
         setServiceStatus('offline');
       }
@@ -1297,7 +1330,8 @@ export function SyncSettingsClient({ mappings, tenants, stats, latestRuns, initi
               <Button
                 size="lg"
                 className="h-9"
-                disabled={syncing.has('all') || Boolean(offlineReason)}
+                disabled={syncing.has('all') || Boolean(offlineReason) || sourceSyncOff}
+                title={sourceSyncReason ?? undefined}
                 onClick={triggerFullSync}
               >
                 {syncing.has('all') ? (
@@ -1313,6 +1347,15 @@ export function SyncSettingsClient({ mappings, tenants, stats, latestRuns, initi
             {filterLabel ? <> — hanya untuk <strong>{filterLabel.name}</strong></> : null}. Berkas
             (job profile, kamus, HAV, MCU) tidak ikut: unggah lewat kartu di bawah.
           </p>
+          {!offlineReason && sourceSyncReason && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-xs">
+              <WifiOff className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="min-w-0">
+                <p className="font-semibold text-amber-700 dark:text-amber-300">Sinkronisasi dari sumber dinonaktifkan</p>
+                <p className="mt-0.5 text-muted-foreground">{sourceSyncReason}</p>
+              </div>
+            </div>
+          )}
           {offlineReason && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-xs">
               <WifiOff className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -1514,7 +1557,7 @@ export function SyncSettingsClient({ mappings, tenants, stats, latestRuns, initi
           columns={3}
           title="Unggah Excel Pengganti Sumber"
           icon={FileSpreadsheet}
-          description="Untuk data yang biasanya ditarik dari database / API Orange. Sekali jalan: hanya memperbarui baris yang ada di berkas, lalu sinkronisasi terjadwal berikutnya kembali ke sumber aslinya. Dipakai saat koneksi sumber bermasalah atau perlu koreksi manual."
+          description="Untuk data yang biasanya ditarik dari database / API Orange. Sekali jalan: hanya memperbarui baris yang ada di berkas, dan perubahannya langsung diteruskan ke data kandidat dan posisi setiap Company. Sinkronisasi terjadwal berikutnya kembali ke sumber aslinya. Dipakai saat koneksi sumber bermasalah atau perlu koreksi manual."
           disabledReason={offlineReason}
           buildSyncUrl={buildSyncUrl}
           latestRuns={latestRuns}

@@ -15,14 +15,8 @@ import { getCurrentTenantId } from '@/lib/tenant';
 import { DISCIPLINE_VALUES, MCU_VALUES, PERFORMANCE_VALUES } from '@/lib/candidate-values';
 import { refuseInDemoMode } from '@/lib/demo/write';
 import { logAudit } from '@/lib/audit';
-import {
-  decryptCandidateRow,
-  decryptCandidateValue,
-  encryptCandidateRow,
-} from '@/lib/candidate-crypto';
 import { demoScrub } from '@/lib/demo/names';
 import { getCurrentUser } from '@/lib/auth';
-import { ensureUnlocked } from '@/lib/crypto/key-store';
 import { paBaChanged } from '@/lib/hav-effective';
 import { deriveHavQuadrant } from '@/lib/hav-quadrant-derive';
 import { currentEffectiveHav, recordFormulaHavEvent, type HavFormulaEventInput } from '@/lib/hav-formula-event';
@@ -62,7 +56,7 @@ function optionalString(formData: FormData, key: string) {
   return trimmed === '' ? null : trimmed;
 }
 
-/** years_experience is stored as encrypted text; write its numeric form as a string. */
+/** years_experience is stored as text; write its numeric form as a string. */
 function yearsToString(value: number | null): string | null {
   return value == null ? null : String(value);
 }
@@ -202,7 +196,7 @@ async function assertNpkUnchanged(candidateId: string, tenantId: string, submitt
 
   const owner = (clash.rows as { name: string | null; isDeleted: boolean }[])[0];
   if (owner) {
-    const ownerName = decryptCandidateValue(owner.name);
+    const ownerName = owner.name || null;
     const who = ownerName ? ` (${ownerName}${owner.isDeleted ? ', sudah dihapus' : ''})` : '';
     throw new Error(
       `NPK ${trimmed} sudah terdaftar untuk kandidat lain${who}. NPK harus unik — perubahan tidak disimpan.`,
@@ -300,10 +294,9 @@ export async function createCandidateAction(formData: FormData) {
 
     const disciplineStatus = parseEnum(formData, 'disciplineStatus', DISCIPLINE_VALUES);
     const mcuStatus = parseEnum(formData, 'mcuStatus', MCU_VALUES);
-    // Both columns are NOT NULL and encrypted, so a missing value has nowhere
-    // honest to go: NULL violates the constraint (a raw database error), the
-    // column default would be PLAINTEXT in an encrypted column, and assuming
-    // "CLEAR" would qualify somebody on a hard filter nobody recorded. The update
+    // Both columns are NOT NULL, so a missing value has nowhere honest to go:
+    // NULL violates the constraint (a raw database error), and assuming "CLEAR"
+    // would qualify somebody on a hard filter nobody recorded. The update
     // path keeps the stored value instead; a new candidate has none to keep.
     if (!disciplineStatus) throw new Error('Status disiplin wajib dipilih.');
     if (!mcuStatus) throw new Error('Status MCU wajib dipilih.');
@@ -313,8 +306,7 @@ export async function createCandidateAction(formData: FormData) {
 
     const [inserted] = await db
       .insert(schema.candidates)
-      .values(
-        await encryptCandidateRow({
+      .values({
           name,
           employeeId,
           email: optionalString(formData, 'email'),
@@ -333,8 +325,7 @@ export async function createCandidateAction(formData: FormData) {
           major,
           tenantId,
           createdBy,
-        }),
-      )
+        })
       .returning({ id: schema.candidates.id });
 
     const techCompRaw = formData.get('technicalCompetencies') as string | null;
@@ -378,7 +369,6 @@ export async function updateCandidateAction(formData: FormData) {
     // over an older placement and an older upload. Decided, and the button's
     // refusal raised, BEFORE anything is written.
     const recompute = formData.get('recomputeHav') === '1';
-    await ensureUnlocked();
     const [prior] = await db
       .select({
         employeeId: schema.candidates.employeeId,
@@ -391,9 +381,9 @@ export async function updateCandidateAction(formData: FormData) {
       .limit(1);
     if (!prior) throw new Error('Kandidat tidak ditemukan.');
     const priorOpen = {
-      havQuadrant: decryptCandidateValue(prior.havQuadrant),
-      performanceGrade: decryptCandidateValue(prior.performanceGrade),
-      behaviorRecommendation: decryptCandidateValue(prior.behaviorRecommendation),
+      havQuadrant: prior.havQuadrant || null,
+      performanceGrade: prior.performanceGrade || null,
+      behaviorRecommendation: prior.behaviorRecommendation || null,
     };
     const formula = deriveHavQuadrant({
       performanceGrade: attributes.performanceGrade,
@@ -422,7 +412,7 @@ export async function updateCandidateAction(formData: FormData) {
       };
     }
 
-    const candidateRow = await encryptCandidateRow({
+    const candidateRow = {
           name,
           email: optionalString(formData, 'email'),
           currentPosition: optionalString(formData, 'currentPosition'),
@@ -460,7 +450,7 @@ export async function updateCandidateAction(formData: FormData) {
           ...(attributes.disciplineStatus ? { disciplineStatus: attributes.disciplineStatus } : {}),
           ...(attributes.mcuStatus ? { mcuStatus: attributes.mcuStatus } : {}),
           updatedAt: new Date(),
-        });
+        };
     let havSuperseded = false;
     await db.transaction(async (tx) => {
       await tx
@@ -554,7 +544,7 @@ export async function deleteCandidateAction(formData: FormData) {
       entityType: 'candidate',
       entityId: id,
       action: 'delete',
-      summary: `Karyawan "${decryptCandidateValue(removed.name)}" dihapus (data historis dipertahankan).`,
+      summary: `Karyawan "${removed.name}" dihapus (data historis dipertahankan).`,
     });
 
     revalidateCandidatePaths();
@@ -589,7 +579,7 @@ export async function restoreCandidateAction(formData: FormData) {
       entityType: 'candidate',
       entityId: id,
       action: 'update',
-      summary: `Karyawan "${decryptCandidateValue(restored.name)}" dipulihkan.`,
+      summary: `Karyawan "${restored.name}" dipulihkan.`,
     });
 
     revalidateCandidatePaths();
@@ -669,7 +659,7 @@ async function resolveHolderForPositionActionImpl(
   if (!row) return null;
 
   return {
-    holderName: decryptCandidateValue(row.candidateName) ?? row.empName ?? '',
+    holderName: row.candidateName || row.empName || '',
     // sync_employee_positions ids are 5-digit zero-padded ("00682"); drop the
     // leading 0 to match the 4-digit form used by candidates/sync_employees.
     holderEmployeeId: row.candidateEmployeeId ?? row.employeeId.replace(/^0/, ''),
@@ -749,7 +739,7 @@ async function resolveHoldersForPositionActionImpl(
       return a.employeeId.localeCompare(b.employeeId);
     })
     .map((row) => ({
-      holderName: decryptCandidateValue(row.candidateName) ?? row.empName ?? '',
+      holderName: row.candidateName || row.empName || '',
       holderEmployeeId: row.candidateEmployeeId ?? row.employeeId.replace(/^0/, ''),
       candidateId: row.candidateId,
     }));

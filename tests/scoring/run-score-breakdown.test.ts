@@ -113,12 +113,6 @@ describe('TC-RSB HAV quadrant shown on a run row', () => {
     assert.deepEqual(recordedHavQuadrant(null), { quadrant: null, source: 'not_recorded' });
   });
 
-  test('a still-sealed quadrant is "locked", not shown as ciphertext', () => {
-    const hav = recordedHavQuadrant({ havQuadrant: 'v1:aaa:bbb:ccc', ahpTopsis: {} });
-    assert.deepEqual(hav, { quadrant: null, source: 'locked' });
-    assert.equal(runHavText({ havQuadrant: null, havQuadrantSource: 'locked' }), 'terkunci');
-  });
-
   test('neither the loader nor the Kandidat tab lays today\'s HAV over a run row', () => {
     const loader = read('lib/scoring-engine.ts');
     assert.match(loader, /havQuadrant:\s*hav\.quadrant/);

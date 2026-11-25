@@ -4,7 +4,6 @@ import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm';
 
 import { db } from '@/lib/db';
 import * as schema from '@/lib/db/schema';
-import { decryptOrNull, ensureUnlocked } from '@/lib/crypto/key-store';
 import { resolveEffectiveHav, type EffectiveHav, type HavSource } from '@/lib/hav-effective';
 import { normalizeHavQuadrant } from '@/lib/hav-quadrant';
 import { isDemoMode } from '@/lib/app-mode';
@@ -36,8 +35,8 @@ function isUndefinedColumn(err: unknown): boolean {
 let warnedNoClock = false;
 
 /**
- * Manual quadrants IN FORCE, by candidate id. A sealed value that will not open
- * is skipped and logged.
+ * Manual quadrants IN FORCE, by candidate id. A value that is not a valid
+ * quadrant is skipped and logged.
  *
  * "In force" is decided on TIME, here, in SQL: a placement counts only while it
  * is NEWER than `candidates.hav_auto_changed_at` — the last time a sync (HAV
@@ -52,7 +51,6 @@ export async function loadManualHavQuadrants(candidateIds: string[]): Promise<Ma
   const ids = Array.from(new Set(candidateIds.filter(Boolean)));
   const out = new Map<string, number>();
   if (ids.length === 0) return out;
-  await ensureUnlocked();
   const placements = schema.talentMappingPlacements;
   let rows: { candidateId: string; quadrant: string }[];
   try {
@@ -96,10 +94,9 @@ export async function loadManualHavQuadrants(candidateIds: string[]): Promise<Ma
     }
   }
   for (const row of rows) {
-    const opened = decryptOrNull(row.quadrant).value;
-    const canonical = normalizeHavQuadrant(opened);
+    const canonical = normalizeHavQuadrant(row.quadrant);
     if (canonical) out.set(row.candidateId, Number(canonical));
-    else console.warn(`[hav-placements] placement for candidate ${row.candidateId} could not be opened`);
+    else console.warn(`[hav-placements] placement for candidate ${row.candidateId} holds no valid quadrant`);
   }
   return out;
 }
@@ -150,7 +147,7 @@ export type WithEffectiveHav<T> = Omit<T, 'havQuadrant'> & {
 };
 
 /**
- * Fold the HAV in force into already-DECRYPTED candidate rows. One query for
+ * Fold the HAV in force into candidate rows. One query for
  * the placements, however many rows.
  */
 export async function withEffectiveHav<T extends HavInputRow>(

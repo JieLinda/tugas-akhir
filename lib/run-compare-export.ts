@@ -10,6 +10,7 @@
 import { ATTRIBUTION_NOTE, configStatusLabel, CRITERIA, CRITERION_LABEL, ORIGIN_LABEL, type CriterionKey } from './run-compare';
 import type { ComparisonDto } from './run-compare-dto';
 import { formatDateTime } from './datetime';
+import { leftCauseText } from './run-compare-format';
 import { shortRunId } from './run-history';
 
 export type Sheet = { name: string; rows: (string | number | null)[][] };
@@ -135,7 +136,7 @@ export function buildComparisonSheets(dto: ComparisonDto, positionTitle: string)
         r.deltaPp,
         r.finalistA == null ? null : r.finalistA ? 'Ya' : 'Tidak',
         r.finalistB == null ? null : r.finalistB ? 'Ya' : 'Tidak',
-        r.finalistChange ? FINALIST[r.finalistChange] : null,
+        r.finalistChange === 'keluar' ? leftCauseText(r.leftCause) : r.finalistChange ? FINALIST[r.finalistChange] : null,
         r.readinessA,
         r.readinessB,
         r.decisionA == null ? null : `Dipilih${r.decisionA ? `: ${r.decisionA}` : ''}`,

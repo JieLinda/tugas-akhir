@@ -482,9 +482,9 @@ Angka & status pada panel ini:
 
 ---
 
-## Kamus Kompetensi (/job-profiles/kamus — URL lama /kamus-kompetensi dialihkan) · Scoring Baru (/scoring/new) · Pengaturan Sinkronisasi (/settings/sync) · Keamanan & Enkripsi (/settings/security)
+## Kamus Kompetensi (/job-profiles/kamus — URL lama /kamus-kompetensi dialihkan) · Scoring Baru (/scoring/new) · Pengaturan Sinkronisasi (/settings/sync)
 
-Empat halaman pendukung siklus suksesi Pulse. (1) Kamus Kompetensi: katalog baca-saja seluruh kompetensi teknis (kode TC) beserta definisi dan tuntutan 4 level proficiency — sumber rujukan saat membaca hasil penilaian teknis; isinya berasal dari PDF "Dictionary Technical Competency" yang diunggah di halaman Sinkronisasi, berlaku sama untuk semua unit bisnis. Kamus TIDAK memetakan kompetensi ke jabatan; untuk melihat kompetensi yang dituntut sebuah jabatan (termasuk jabatan yang belum dikelola di Position Management) gunakan halaman Job Profile. (2) Scoring Baru: wizard menjalankan satu sesi penilaian/perangkingan kandidat terhadap satu posisi — memilih program, posisi target, unit bisnis penyumbang kandidat, rentang level, dan kandidat yang dikecualikan, lalu memantau progres sampai peringkat tersimpan. (3) Pengaturan Sinkronisasi: pusat kendali masuknya data — koneksi database sumber, tombol tarik data per modul, unggah berkas PDF/Excel, riwayat eksekusi, pembangunan vektor embedding, pemetaan Company ID ke unit bisnis, dan pengosongan/pemulihan pool kandidat. (4) Keamanan & Enkripsi: mengelola kunci master yang melindungi password database sumber — inisialisasi, buka kunci, kunci, dan rotasi. Catatan akses: bila login Keycloak tidak dikonfigurasi, aplikasi berjalan sebagai satu "System User" beradmin penuh sehingga semua tombol terbuka.
+Tiga halaman pendukung siklus suksesi Pulse. (1) Kamus Kompetensi: katalog baca-saja seluruh kompetensi teknis (kode TC) beserta definisi dan tuntutan 4 level proficiency — sumber rujukan saat membaca hasil penilaian teknis; isinya berasal dari PDF "Dictionary Technical Competency" yang diunggah di halaman Sinkronisasi, berlaku sama untuk semua unit bisnis. Kamus TIDAK memetakan kompetensi ke jabatan; untuk melihat kompetensi yang dituntut sebuah jabatan (termasuk jabatan yang belum dikelola di Position Management) gunakan halaman Job Profile. (2) Scoring Baru: wizard menjalankan satu sesi penilaian/perangkingan kandidat terhadap satu posisi — memilih program, posisi target, unit bisnis penyumbang kandidat, rentang level, dan kandidat yang dikecualikan, lalu memantau progres sampai peringkat tersimpan. (3) Pengaturan Sinkronisasi: pusat kendali masuknya data — koneksi database sumber, tombol tarik data per modul, unggah berkas PDF/Excel, riwayat eksekusi, pembangunan vektor embedding, pemetaan Company ID ke unit bisnis, dan pengosongan/pemulihan pool kandidat. Catatan akses: bila login Keycloak tidak dikonfigurasi, aplikasi berjalan sebagai satu "System User" beradmin penuh sehingga semua tombol terbuka.
 
 ### Kamus — Bilah pencarian & penghitung kompetensi
 
@@ -579,7 +579,6 @@ Angka & status pada panel ini:
 - Lencana "Environment variable": layanan masih memakai setelan dari konfigurasi server, bukan yang tersimpan di halaman ini (baris belum diisi atau sakelar "Pakai pengaturan ini" dimatikan).
 - Lencana "Pengaturan tersimpan": layanan memakai baris yang disimpan di sini.
 - "Password: kosong": layanan tidak memegang password sama sekali untuk sumber itu.
-- "Password tersimpan tidak terpakai": ada password tersimpan tetapi layanan tidak bisa membukanya karena enkripsi terkunci, lalu diam-diam memakai password dari konfigurasi server.
 - "Belum disimpan": ada perubahan yang diketik tetapi belum ditekan Simpan.
 - "Pengaturan aktif tidak diketahui": layanan sinkronisasi tidak dapat dihubungi, jadi yang tampil hanya nilai tersimpan.
 
@@ -670,37 +669,6 @@ Angka & status pada panel ini:
 - Semua angka di kartu ini hanya untuk unit bisnis yang sedang aktif; unit lain tidak tersentuh.
 - Daftar kandidat terhapus manual hanya menampilkan 200 penghapusan terbaru.
 
-### Keamanan — Kartu Kunci Enkripsi
-
-Status kunci (Belum diinisialisasi / Terkunci / Terbuka), lokasi berkas kunci di server, asal kunci (berkas / variabel lingkungan / belum ada), dan kendali sesuai status: inisialisasi, kolom buka kunci, atau tombol kunci.
-
-Angka & status pada panel ini:
-
-- "Belum diinisialisasi": enkripsi belum pernah diaktifkan; password sumber data tersimpan apa adanya tanpa enkripsi.
-- "Terkunci": aplikasi tidak memegang kunci — nilai terenkripsi tidak terbaca dan penyimpanan password baru ditolak.
-- "Terbuka" + "Dibuka pada <waktu>": aplikasi memegang kunci; waktu tersebut adalah saat kunci terakhir dibuka (termasuk pembukaan otomatis saat aplikasi start).
-- "Berkas kunci belum ada": kunci belum pernah dibuat, atau berkasnya hilang/tidak ter-mount — aplikasi akan terkunci lagi setiap restart sampai berkasnya dipulihkan.
-- "Kunci berasal dari environment variable PULSE_MASTER_KEY": kunci dapat dipakai, tetapi tombol Inisialisasi dan Rotasi tidak dapat bekerja dari halaman ini.
-
-### Keamanan — Layanan pendamping
-
-Daftar layanan lain yang perlu memegang kunci yang sama (layanan sinkronisasi), dengan status Memegang kunci / Terkunci / Tidak dapat dihubungi.
-
-Angka & status pada panel ini:
-
-- "Tidak ada layanan pendamping yang dikonfigurasi": alamat layanan sinkronisasi tidak diset, jadi tidak ada yang perlu dikirimi kunci.
-- "Terkunci" padahal aplikasi terbuka: layanan itu akan diam-diam memakai password dari konfigurasi server, bukan password tersimpan — kunci lalu buka kembali enkripsi agar kunci terkirim ulang.
-- "Tidak dapat dihubungi": layanan mati saat kunci dikirim; setelah hidup, buka kembali enkripsi.
-
-### Keamanan — Rotasi kunci master (panel lipat)
-
-Penjelasan bahwa rotasi hanya membungkus ulang kunci data (tidak ada nilai yang dienkripsi ulang), kolom opsional untuk kunci lama, dan tombol rotasi.
-
-Angka & status pada panel ini:
-
-- Kolom "Kunci master saat ini" boleh dikosongkan: kunci lama dibaca dari berkas kunci di server. Diisi hanya bila berkas kunci hilang atau tidak cocok dengan database.
-- Setelah rotasi berhasil, kunci lama langsung tidak berlaku dan kunci baru hanya ditampilkan satu kali.
-
 ### Kalau angkanya kosong, nol, atau "tanpa" — sebab & cara mengatasi
 
 - "Kamus kosong / 0 kompetensi" — belum ada PDF kamus yang diproses. Buka Pengaturan → Sinkronisasi → kartu Berkas Sumber → kotak "Kamus Kompetensi", unggah PDF Dictionary Technical Competency, tunggu notifikasi selesai, lalu buka lagi halaman Kamus. Kamus berlaku sama untuk semua unit bisnis, jadi cukup diunggah sekali.
@@ -727,11 +695,7 @@ Angka & status pada panel ini:
 - "Kartu Kandidat tidak menampilkan waktu sinkron terakhir" — kandidat adalah data turunan yang tidak menyimpan cap waktu sinkron; gunakan baris "terakhir dijalankan" di bawah tombol Kandidat atau tabel Riwayat Sinkronisasi.
 - "Angka kandidat menjadi 0 setelah pengosongan" — kandidat hanya disembunyikan, tidak dihapus. Tekan Pulihkan di kotak kuning kartu Data Kandidat, atau jalankan sinkronisasi Kandidat; mereka kembali dengan ID yang sama sehingga riwayat scoring tetap tersambung. Kandidat yang dihapus SATU PER SATU tidak ikut kembali dan harus dipulihkan lewat panel "Lihat kandidat yang dihapus manual".
 - "Panel embedding bertuliskan 0 / N ter-embed atau berlencana 'belum siap'" — belum pernah dibangun, atau penyimpanan vektor belum tersedia / tidak dapat dihubungi (pesan tepatnya ada di kotak kuning). Bila statusnya 'siap', tekan Mulai Embedding. Bila 'belum siap', perbaiki dulu ketersediaan database vektor — tombolnya memang dimatikan agar tidak menghasilkan kegagalan berulang. Selama vektor kosong, penilaian teknis & relevansi karier pada AHP+TOPSIS jatuh ke mekanisme cadangan berbasis pemegang jabatan, dan hal itu dicatat pada halaman progres run.
-- "Sudah menyimpan password database tapi layanan tetap memakai yang lama" — periksa kotak "Sedang dipakai layanan" pada panel koneksi. Lencana "Environment variable" berarti sakelar "Pakai pengaturan ini" mati atau barisnya belum tersimpan. Peringatan "Password tersimpan tidak terpakai" berarti enkripsi sedang terkunci sehingga layanan tidak dapat membaca password tersimpan — buka kunci di Pengaturan → Keamanan, lalu simpan ulang bila perlu.
-- "Muncul peringatan bahwa password tersimpan tanpa enkripsi" — enkripsi belum pernah diaktifkan. Buka Pengaturan → Keamanan, jalankan Inisialisasi Enkripsi (simpan salinan kuncinya!), lalu kembali ke kartu koneksi dan simpan ulang password agar tersimpan dalam bentuk terenkripsi.
-- "Status enkripsi 'Terkunci' setelah server restart" — normalnya kunci dibaca sendiri dari berkas kunci di server. Status terkunci berarti berkas kuncinya hilang/tidak ter-mount, atau seseorang menekan tombol Kunci. Tempel kunci master cadangan di kolom Buka Kunci: bila berkasnya tidak ada, sistem menuliskannya kembali sehingga restart berikutnya tidak terkunci lagi.
-- "Layanan pendamping berstatus Terkunci padahal aplikasi Terbuka" — layanan itu belum menerima kunci (sempat mati saat kunci dikirim). Akibatnya ia memakai kredensial dari konfigurasi server tanpa memberi pesan gagal apa pun. Setelah layanan hidup, tekan Kunci lalu Buka Kunci agar kunci dikirim ulang.
-- "Tombol Inisialisasi/Rotasi menolak dengan alasan variabel lingkungan" — kunci master di instalasi ini berasal dari variabel lingkungan PULSE_MASTER_KEY, yang tidak dapat ditulis dari halaman web. Kunci tetap dapat dipakai; pembuatan dan rotasinya harus dilakukan di luar aplikasi (atau hapus variabel itu agar beralih ke berkas kunci).
+- "Sudah menyimpan password database tapi layanan tetap memakai yang lama" — periksa kotak "Sedang dipakai layanan" pada panel koneksi. Lencana "Environment variable" berarti sakelar "Pakai pengaturan ini" mati atau barisnya belum tersimpan.
 
 ---
 
@@ -1144,7 +1108,7 @@ Angka & status pada panel ini:
 - Masa kerja ditulis '12y' artinya 12 tahun; 0y berarti data masa kerja belum diisi.
 - HAV ditampilkan sebagai 'nomor NAMA (KATEGORI)', mis. '1 STAR (TOP)'; tanda '—' berarti kuadran kosong atau di luar 1–16.
 - MCU: Fit, Fit with note, Unfit, Expired; '-' berarti belum ada status MCU. Status MCU tidak menggugurkan kandidat dan tidak mengubah skor; aturan MCU pada program hanya menandai.
-- Disiplin: 'Bersih' (clear), ST, SP Aktif, SP < 2 tahun, SP 3, SP Berat, Warning, Sanksi aktif; '-' berarti belum ada data.
+- Disiplin, dari yang paling ringan: 'Bersih' (clear), ST (Surat Teguran), SP1/SP2 berakhir ≥ 2 tahun, SP1/SP2 berakhir < 2 tahun, SP1/SP2 aktif, SP3, SP Pertama & Terakhir; nilai lama: Warning, Sanksi aktif. '-' berarti belum ada data.
 - Riwayat PA: enam kotak semester untuk 3 tahun terakhir (S1 dan S2 per tahun). 'C*' berarti tidak ada nilai PA pada semester itu dan sistem menganggapnya C.
 - Technical Competencies: Current Score dan Target Score berskala 0–4 (0 Not Assessed, 1 Basic, 2 Intermediate, 3 Advanced, 4 Expert); Gap negatif berarti masih di bawah target.
 - Riwayat Jabatan berlencana 'Non-Primary' untuk jabatan rangkap; tanggal 'Sekarang' berarti masih berjalan.

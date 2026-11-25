@@ -43,8 +43,8 @@ export function buildSummary(ctx: BuildContext): void {
   s.row(['Selesai', N(serialOf(id.completedAt), DATE_TIME)]);
   s.row(['Workbook dibuat', N(serialOf(b.generatedAt), DATE_TIME)]);
   kv('Kandidat dinilai (pool)', b.pool.length || b.results.length);
-  kv('Jejak engine', b.engineTraceStatus.readable ? `tersimpan${b.engineTraceStatus.sealed ? ' (terenkripsi)' : ''}` : b.engineTraceStatus.reason);
-  kv('Jejak pembentukan pool', b.poolTraceStatus.readable ? `tersimpan${b.poolTraceStatus.sealed ? ' (terenkripsi)' : ''}` : b.poolTraceStatus.reason);
+  kv('Jejak engine', b.engineTraceStatus.readable ? 'tersimpan' : b.engineTraceStatus.reason);
+  kv('Jejak pembentukan pool', b.poolTraceStatus.readable ? 'tersimpan' : b.poolTraceStatus.reason);
   if (ctx.t) {
     kv('Zona waktu proses scoring-service', `${ctx.t.process.timeZone ?? '—'} (${ctx.t.process.offsetMinutes} menit), Node ${ctx.t.process.node}`);
     kv('Kandidat dibawa dari run induk', `${ctx.t.carried.candidateIds.length} (rinciannya dari jejak induk: ${ctx.t.carried.fromParentTrace})`);

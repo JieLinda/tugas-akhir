@@ -117,7 +117,8 @@ export const SIDEBAR_GROUPS: readonly NavGroup[] = [
   {
     id: 'reference',
     label: 'Data Referensi',
-    // Two menus over ONE permission bundle (job_profiles.*): the documents
+    // Kandidat (the succession pool's records), then two menus over ONE
+    // permission bundle (job_profiles.*): the documents
     // themselves, then what is built from them — how positions group into job
     // families and how they hang together in the org structure. Dokumen comes
     // first because it is the input: the Job Family map is clustered from the
@@ -135,7 +136,6 @@ export const SIDEBAR_GROUPS: readonly NavGroup[] = [
       { href: '/governance', label: 'Tata Kelola', permission: 'governance.manage' },
       { href: '/settings/sync', label: 'Tambah Data', permission: 'sync.manage' },
       // { href: '/settings/users', label: 'Pengguna & Akses', permission: 'users.manage' },
-      // { href: '/settings/security', label: 'Keamanan', permission: 'governance.manage' },
     ],
   },
 ];

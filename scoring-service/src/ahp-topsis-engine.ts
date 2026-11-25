@@ -57,14 +57,6 @@ import {
   type AhpNarrativeEntry,
   type AhpNarrativeInput,
 } from "./ahp-narrative.js";
-import {
-  ensureUnlocked,
-  decryptField,
-  isUnlocked,
-  masterKeyFilePath,
-  resolveWriteMode,
-  sealValue,
-} from "./services/crypto.js";
 import { log } from "./llm.js";
 import {
   callGeminiGrounded,
@@ -133,7 +125,13 @@ import { COMPETENCY_IDF_PARAMS } from "./competency-idf.js";
 import { RANDOM_INDEX } from "./ahp.js";
 import { computeAhpWeights, pairwiseFromWeights, isValidPairwise } from "./ahp.js";
 import { ahpInputCheck, saatyLabel } from "./ahp-saaty.js";
-import { rankCandidatesByTopsis } from "./topsis-ranking.js";
+import {
+  rankCandidatesByTopsis,
+  anchorsFromDetail,
+  readTopsisAnchors,
+  type RecordedTopsis,
+  type TopsisAnchorsByKey,
+} from "./topsis-ranking.js";
 export { rankCandidatesByTopsis };
 import { scorePerformanceAspect } from "./pa-score.js";
 export { scorePerformanceAspect } from "./pa-score.js";
@@ -703,12 +701,7 @@ async function loadAhpCandidates(
 ): Promise<AhpCandidate[]> {
   if (candidateIds.length === 0) return [];
 
-  // Candidates' person-scoped fields are encrypted at rest (v1 envelope). Pull
-  // the DEK from the master key file before reading them; decryptField() then
-  // degrades to null on any field if the key is unavailable.
-  await ensureUnlocked();
-
-  const decryptedRows = (
+  const loadedRows = (
     await query<Omit<AhpCandidate, "competencies" | "history" | "havSource">>(
       `SELECT id, name, employee_id as "employeeId", current_position as "currentPosition",
               years_experience as "yearsExperience", education, major,
@@ -728,21 +721,12 @@ async function loadAhpCandidates(
     )
   ).map((c) => ({
     ...c,
-    name: decryptField(c.name) as string,
-    currentPosition: decryptField(c.currentPosition) as string | null,
+    // years_experience is a text column; parse it the same way as before.
     yearsExperience:
       (() => {
-        const v = decryptField(c.yearsExperience);
+        const v = c.yearsExperience as unknown;
         return v == null || v === "" ? null : Number(v);
       })(),
-    education: decryptField(c.education) as string | null,
-    major: decryptField(c.major) as string | null,
-    disciplineStatus: decryptField(c.disciplineStatus) as string | null,
-    mcuStatus: decryptField(c.mcuStatus) as string | null,
-    performanceGrade: decryptField(c.performanceGrade) as string | null,
-    behaviorRecommendation: decryptField(c.behaviorRecommendation) as string | null,
-    behaviorNotes: decryptField(c.behaviorNotes) as string | null,
-    havQuadrant: decryptField(c.havQuadrant) as string | null,
   }));
   // The HAV aspect scores the quadrant IN FORCE — manual > upload > formula
   // (hav-effective.ts) — the value the web app's eligibility rules judged this
@@ -759,10 +743,10 @@ async function loadAhpCandidates(
   const demoOn = demo ? await loadDemoOnIds(candidateIds) : null;
   const demoCopies = demo ? await loadDemoCopies(candidateIds) : new Map<string, DemoCopy>();
   const presented = demo
-    ? decryptedRows
+    ? loadedRows
         .filter((r) => demoOn!.has(r.id) || carried.has(r.id))
         .map((r) => overlayDemoCopy(r, demoCopies.get(r.id)))
-    : decryptedRows;
+    : loadedRows;
   const rows = (await withEffectiveHav(presented, { ignorePlacementsFor: havEditedIds(demoCopies), formulaPinnedFor: havFormulaPinnedIds(demoCopies) })).map(({ effectiveHav, ...row }) => ({
     ...row,
     havEffective: effectiveHav,
@@ -5964,9 +5948,9 @@ function resolveEducationRequirement(
 }
 
 /**
- * A frozen education requirement, or null when it cannot be read back: an
- * incumbent-derived requirement is stored sealed, and a locked key means it
- * is unreadable — the caller then resolves live and reports it.
+ * A frozen education requirement, or null when the parent did not record one
+ * (`recorded: false` on runs made while the old encryption key was locked) —
+ * the caller then resolves live and reports it.
  */
 function readFrozenEducation(
   basis: PositionBasis
@@ -5974,17 +5958,16 @@ function readFrozenEducation(
   const e = basis.education;
   if (!e.recorded) return null;
   if (e.source !== "incumbent") return { requirement: e.requirement, source: e.source };
+  // An incumbent-derived requirement keeps its historical key
+  // `requirementSealed`; it now holds plain text.
   if (!e.requirementSealed) return { requirement: null, source: "none" };
-  const opened = decryptField(e.requirementSealed);
-  return opened == null ? null : { requirement: String(opened), source: "incumbent" };
+  return { requirement: String(e.requirementSealed), source: "incumbent" };
 }
 
 /**
- * The education part of a basis a run RECORDS. An incumbent's education is a
- * person's data — those columns are encrypted at rest — so it is sealed with
- * the same three-state rule: plaintext only on an install that never enabled
- * encryption, ciphertext when unlocked, and NOT recorded when locked (never
- * plaintext).
+ * The education part of a basis a run RECORDS. An incumbent-derived
+ * requirement is stored under the historical key `requirementSealed` (plain
+ * text) so the shape older runs and the web app read stays the same.
  */
 async function educationForBasis(edu: {
   requirement: string | null;
@@ -5993,14 +5976,10 @@ async function educationForBasis(edu: {
   if (edu.source !== "incumbent") {
     return { source: edu.source, requirement: edu.requirement, requirementSealed: null, recorded: true };
   }
-  const mode = await resolveWriteMode().catch(() => "locked" as const);
-  if (mode === "locked") {
-    return { source: "incumbent", requirement: null, requirementSealed: null, recorded: false };
-  }
   return {
     source: "incumbent",
     requirement: null,
-    requirementSealed: sealValue(mode, edu.requirement),
+    requirementSealed: edu.requirement == null || edu.requirement === "" ? null : String(edu.requirement),
     recorded: true,
   };
 }
@@ -6166,14 +6145,13 @@ export async function runAhpTopsisSession(
     });
   }
 
-  // "Skor sementara": a candidate whose sealed columns could not be read is
-  // scored on constants for four aspects, not measurements. Decided now for
-  // everyone this run scores; a carried row keeps its parent's flag, because
-  // its numbers are the parent's.
-  const provisionalIds = new Set<string>([
-    ...toScore.filter((c) => c.name == null).map((c) => c.id),
-    ...[...reused].filter(([, hit]) => hit.provisional).map(([id]) => id),
-  ]);
+  // "Skor sementara": a carried row keeps its parent's flag, because its
+  // numbers are the parent's (older runs scored while encrypted candidate
+  // columns were unreadable recorded it). Nothing this run scores is
+  // provisional any more — candidate data is stored as plain text.
+  const provisionalIds = new Set<string>(
+    [...reused].filter(([, hit]) => hit.provisional).map(([id]) => id),
+  );
 
   // Readiness labels come from THIS run's frozen thresholds (FR-SN-04): a
   // child's snapshot carries its parent's, a root's the ones captured when it
@@ -6329,13 +6307,12 @@ export async function runAhpTopsisSession(
         return null;
       })
     : null;
-  // education/major are encrypted at rest — decrypt before using as a benchmark.
   const incumbentEducationRequirement =
     [
-      incumbentProfile ? decryptField(incumbentProfile.education) : null,
-      incumbentProfile ? decryptField(incumbentProfile.major) : null,
+      incumbentProfile ? incumbentProfile.education : null,
+      incumbentProfile ? incumbentProfile.major : null,
     ]
-      .map((v) => ((v as string | null) ?? "").trim())
+      .map((v) => (v == null ? "" : String(v)).trim())
       .filter(Boolean)
       .join(" ") || null;
   const educationRequirement =
@@ -6754,12 +6731,64 @@ export async function runAhpTopsisSession(
   const criteriaFreeze = frozenDroppedCriteria(frozen, liveDroppedCriteria);
   const droppedCriteria = criteriaFreeze.dropped;
   const droppedKeys = new Set(droppedCriteria.map((d) => d.key));
+
+  // ── The TOPSIS yardstick (a child ranks on its PARENT's) ──
+  // Classic TOPSIS is set-relative: every divisor √Σx² and both ideals move
+  // when somebody is added, so carried candidates whose six aspects are frozen
+  // would still swap places (measured on 65 stored runs: adding ONE candidate
+  // reordered the carried candidates in 66% of trials and pushed a parent
+  // finalist below a parent non-finalist in 13%). A child therefore ranks
+  // against the parent's divisors and ideals: every carried candidate keeps
+  // the parent's closeness exactly, and an added one is placed between them.
+  // The parent's recorded yardstick wins (a grandchild then sits on the ROOT's);
+  // a parent that recorded none is re-derived from its stored pool with its own
+  // weights — the numbers a classic parent was ranked with.
+  let topsisAnchors: TopsisAnchorsByKey | null = null;
+  let topsisAnchorSource: RecordedTopsis["source"] = "own";
+  if (rerun) {
+    const carriedCandidates = candidates.filter((c) => !newIdSet.has(c.id));
+    if (carriedCandidates.length > 0) {
+      const parentScale = rankCandidatesByTopsis(carriedCandidates, aspectScoresById, weights, droppedKeys);
+      const wv = Object.fromEntries(
+        parentScale.activeCriteria.map((k, j) => [k, parentScale.detail.weightVector[j]!])
+      ) as Partial<Record<AhpCriterionKey, number>>;
+      const recorded = readTopsisAnchors(baseRunInfo?.frozen?.topsis, parentScale.activeCriteria, wv);
+      topsisAnchors = recorded ?? anchorsFromDetail(parentScale.detail, parentScale.activeCriteria);
+      topsisAnchorSource = recorded ? "parent" : "parent_pool";
+    }
+  }
   const {
     activeCriteria,
     effectiveWeights,
     rankedAll,
     detail: topsisDetail,
-  } = rankCandidatesByTopsis(candidates, aspectScoresById, weights, droppedKeys);
+  } = rankCandidatesByTopsis(candidates, aspectScoresById, weights, droppedKeys, topsisAnchors);
+  // Added candidates whose value lay outside the parent's range on a criterion
+  // were placed AT the nearer end of it (anchored mode clamps BOTH ways): above
+  // the parent's best counts as the best, below the parent's worst as the worst.
+  // Reported with the direction, never silent.
+  const topsisClamped = topsisAnchors
+    ? topsisDetail.rowIds.flatMap((id, i) => {
+        const above: AhpCriterionKey[] = [];
+        const below: AhpCriterionKey[] = [];
+        activeCriteria.forEach((k, j) => {
+          if (!topsisDetail.clamped[i]![j]) return;
+          const raw = (topsisDetail.weightVector[j]! * aspectScoresById.get(id)![k]) / topsisDetail.colNorms[j]!;
+          (raw > topsisDetail.idealPos[j]! ? above : below).push(k);
+        });
+        return above.length + below.length > 0
+          ? [{ candidateId: id, criteria: [...above, ...below], above, below }]
+          : [];
+      })
+    : [];
+  const recordedTopsis: RecordedTopsis = {
+    version: 1,
+    mode: topsisAnchors ? "anchored" : "classic",
+    source: topsisAnchors ? topsisAnchorSource : "own",
+    activeCriteria: [...activeCriteria],
+    weightVector: Object.fromEntries(activeCriteria.map((k, j) => [k, topsisDetail.weightVector[j]!])),
+    ...anchorsFromDetail(topsisDetail, activeCriteria),
+  };
   if (droppedKeys.size > 0) {
     log("ahpTopsis.criteriaDropped", {
       sessionId,
@@ -6798,6 +6827,9 @@ export async function runAhpTopsisSession(
     topN: targetFinalists,
     parentFinalistIds,
     comparisonIds,
+    parentRankById: rerun
+      ? new Map([...basePoolEntries].map(([id, e]) => [id, e.poolRank]))
+      : undefined,
   });
   const listedById = new Map(listed.map((l) => [l.candidateId, l]));
   const appended = rankedAll.slice(targetFinalists).filter((e) => listedById.has(e.candidate.id));
@@ -7036,6 +7068,12 @@ export async function runAhpTopsisSession(
             ? "parent"
             : "live_fallback"
           : null,
+        // Criteria on which this (added) candidate lay outside the parent's
+        // range and was counted AT its nearer end — the child ranks on the
+        // parent's TOPSIS yardstick, which cannot stretch past either end.
+        topsisClamped: topsisClamped.find((c) => c.candidateId === candidate.id)?.criteria ?? [],
+        topsisClampedAbove: topsisClamped.find((c) => c.candidateId === candidate.id)?.above ?? [],
+        topsisClampedBelow: topsisClamped.find((c) => c.candidateId === candidate.id)?.below ?? [],
         // ── Where this row sits relative to the finalist cut ──
         // `belowFinalistCut` rows exist only because somebody asked for that
         // person by name; they are NOT part of the bench and every surface that
@@ -7051,13 +7089,16 @@ export async function runAhpTopsisSession(
               comparison: listedById.get(candidate.id)?.comparison ?? false,
               enteredTopN: listedById.get(candidate.id)?.enteredTopN ?? false,
               leftTopN: listedById.get(candidate.id)?.leftTopN ?? false,
+              // Why a parent finalist left the top N — overtaken by a comparison
+              // candidate, or the pool scale moved (see leftTopNCauseOf).
+              leftTopNCause: listedById.get(candidate.id)?.leftTopNCause ?? null,
               parentPoolRank: basePoolEntries.get(candidate.id)?.poolRank ?? null,
               topN: targetFinalists,
             }
           : null,
-        // "Skor sementara": four aspects are constants, not measurements,
-        // because the sealed candidate columns could not be read. Carried rows
-        // keep the parent's flag — their numbers ARE the parent's.
+        // "Skor sementara": only ever true on a carried row whose parent
+        // recorded it (older runs scored while encrypted candidate columns
+        // were unreadable) — their numbers ARE the parent's.
         provisional: provisionalIds.has(candidate.id),
         // Mirrored into the details blob because that is the only thing the
         // position page reads; without it the UI numbers rows by their index and
@@ -7218,11 +7259,12 @@ export async function runAhpTopsisSession(
    * Every row's rank / score / readiness before and after, measured against the
    * parent's FULL scored pool.
    *
-   * Adding candidates moves everybody: TOPSIS is set-relative at the column
-   * norms and at the ideal / anti-ideal, so a carried-over candidate's closeness
-   * moves and ranks can swap while all six aspect scores stay byte-identical to
-   * the parent. A candidate with no parent entry is new to this ranking; one
-   * whose parent entry sat outside the finalist cut was pushed in from the pool.
+   * The child ranks on the parent's TOPSIS yardstick, so a carried-over
+   * candidate keeps the parent's closeness exactly and can only move DOWN, by
+   * the comparison candidates inserted above it (a child from before the
+   * yardstick was frozen could also reorder carried candidates). A candidate
+   * with no parent entry is new to this ranking; one whose parent entry sat
+   * outside the finalist cut was pushed in from the pool.
    */
   function buildRankShifts() {
     return ranked.map((entry) => {
@@ -7255,7 +7297,7 @@ export async function runAhpTopsisSession(
       // Always the parent's whole scored pool now: a parent without one is
       // refused when the child is created.
       poolSource: "pool_snapshot" as const,
-      poolSourceReason: `Perangkingan memakai seluruh ${basePoolEntries.size} kandidat yang dinilai run induk ditambah ${rerun!.newCandidateIds.length} kandidat baru, dengan data, bobot, kriteria aktif, jangkar dan tanggal acuan yang dibekukan dari run induk — jadi peringkat kandidat lama hanya bergeser karena himpunan alternatifnya bertambah.`,
+      poolSourceReason: `Perangkingan memakai seluruh ${basePoolEntries.size} kandidat yang dinilai run induk ditambah ${rerun!.newCandidateIds.length} kandidat baru, dengan data, bobot, kriteria aktif, jangkar, tanggal acuan dan skala TOPSIS (pembagi serta titik ideal) yang dibekukan dari run induk — jadi kecocokan dan urutan kandidat lama sama dengan run induk, dan peringkatnya hanya turun sebanyak kandidat pembanding yang disisipkan di atasnya.`,
       newCount: shifts.filter((s) => s.baseRank == null).length,
       backfilledCount: shifts.filter((s) => s.backfilled).length,
       movedCount: shifts.filter((s) => s.baseRank != null && s.baseRank !== s.newRank).length,
@@ -7349,6 +7391,7 @@ export async function runAhpTopsisSession(
     consistency: { cr, lambdaMax, ci },
     positionBasis: recordedBasis,
     models: runModels,
+    topsis: recordedTopsis,
   });
 
   // What the position basis WAS for this run (FR-RR-07): inherited whole,
@@ -7363,22 +7406,6 @@ export async function runAhpTopsisSession(
       ...(inheritedBasis && !frozenEducation ? ["education"] : []),
     ],
   };
-
-  // A candidate whose `name` came back null can only mean the DEK was
-  // unavailable: the column is NOT NULL in the database. The same key seals
-  // education, major, behavior_recommendation, hav_quadrant and
-  // performance_grade, so losing it does not cost "one piece of context" — it
-  // collapses four of the six aspects to a constant (behavior 0, education 0,
-  // HAV 40 = no-data tier, performance 33 = all-C) while every score still
-  // renders as if it had been measured. Record it like every other degradation.
-  const unreadableCandidates = candidates.filter((c) => c.name == null).length;
-  if (unreadableCandidates > 0) {
-    console.error(
-      `[AHP] ${unreadableCandidates}/${candidates.length} candidates had unreadable ` +
-        `encrypted fields (master key: ${masterKeyFilePath()}, unlocked: ${isUnlocked()}). ` +
-        `Behavior, education, HAV and performance are NOT measured in this run.`
-    );
-  }
 
   // ── The run trace (drizzle/0092) — written BEFORE `completed` (I-1) ──
   // Everything between the raw data and the rank that the records above keep
@@ -7526,6 +7553,12 @@ export async function runAhpTopsisSession(
           dPlus: [...topsisDetail.dPlus],
           dMinus: [...topsisDetail.dMinus],
           targetFinalists,
+          // Anchored (a child): colNorms / idealPos / idealNeg above are the
+          // PARENT's yardstick, not derived from this matrix; `clamped` marks
+          // cells placed at an ideal.
+          anchored: topsisDetail.anchored,
+          anchorSource: recordedTopsis.source,
+          clamped: topsisDetail.clamped.map((row) => [...row]),
         },
         readiness: {
           source: readinessSource,
@@ -7580,6 +7613,15 @@ export async function runAhpTopsisSession(
           // The parent's model ids against this run's — a provider cannot be
           // pinned to a model it may no longer serve, so a move is reported.
           modelsChanged: modelDifferences(frozen?.models ?? null, runModels),
+          // The yardstick the ranking used: the parent's (recorded, or
+          // re-derived from its stored pool), so carried candidates keep their
+          // parent closeness exactly. `clamped`: added candidates placed AT the
+          // parent's ideal on the listed criteria because they exceeded it.
+          topsis: {
+            mode: recordedTopsis.mode,
+            source: recordedTopsis.source,
+            clamped: topsisClamped,
+          },
         }
       : null,
     // Position basis this run scored against, and how it was obtained.
@@ -7643,18 +7685,10 @@ export async function runAhpTopsisSession(
       llmWritten: llmNarratives.size,
       templateFallback: Math.max(0, ranked.length - llmNarratives.size),
     },
-    // Null on a healthy run. Non-null means the sealed candidate columns could
-    // not be read, so the four aspects below are placeholders, not measurements.
-    encryption:
-      unreadableCandidates > 0
-        ? {
-            unreadableCandidates,
-            totalCandidates: candidates.length,
-            masterKeyFile: masterKeyFilePath(),
-            unlocked: isUnlocked(),
-            affectedAspects: ["behavior", "education", "hav", "performance"],
-          }
-        : null,
+    // Always null: application-level encryption was removed, so candidate
+    // columns are always readable. The key stays because older runs carry a
+    // non-null value here (sealed columns were unreadable) and readers check it.
+    encryption: null,
     career: carryBaseDiagnostics ? baseRunInfo!.career ?? careerRunInfo : careerRunInfo,
     technical:
       carryBaseDiagnostics && baseRunInfo!.technical

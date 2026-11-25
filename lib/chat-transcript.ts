@@ -48,8 +48,6 @@ export interface ChatExportMessage {
   content: string;
   /** ISO string from the DB; absent for a message sent in this browser session. */
   createdAt?: string | null;
-  /** False when the row could not be decrypted — see `loadChatHistoryAction`. */
-  readable?: boolean;
 }
 
 export interface ChatExportMeta {
@@ -81,7 +79,6 @@ export interface TranscriptEntry {
   blocks: TranscriptBlock[];
   /** Flattened text — the Excel cell, and the fallback for anything else. */
   plainText: string;
-  unreadable: boolean;
 }
 
 // ─── markdown → blocks ────────────────────────────────────────────
@@ -403,7 +400,6 @@ export function buildTranscript(messages: ChatExportMessage[]): TranscriptEntry[
           },
         ],
         plainText: `[Data ${ref.label} — ${ref.candidate}${detail}] Rincian angka dilampirkan ke AI, tidak disertakan dalam ekspor.`,
-        unreadable: false,
       };
     }
 
@@ -416,7 +412,6 @@ export function buildTranscript(messages: ChatExportMessage[]): TranscriptEntry[
       attachment: null,
       blocks,
       plainText: blocksToPlainText(blocks),
-      unreadable: message.readable === false,
     };
   });
 }
@@ -426,12 +421,11 @@ const METHOD_LABELS: Record<string, string> = {
 };
 
 /** Header rows shared by all three formats, so they cannot disagree. */
-export function buildSummaryRows(meta: ChatExportMeta, entries: TranscriptEntry[]) {
+export function buildSummaryRows(meta: ChatExportMeta, entries: TranscriptEntry[]): { label: string; value: string }[] {
   const questions = entries.filter((e) => e.role === 'user').length;
   const answers = entries.filter((e) => e.role === 'assistant').length;
-  const unreadable = entries.filter((e) => e.unreadable).length;
 
-  const rows: { label: string; value: string }[] = [
+  return [
     { label: 'Posisi', value: meta.positionTitle },
     { label: 'Departemen', value: meta.department || '-' },
     { label: 'Divisi', value: meta.division || '-' },
@@ -449,14 +443,4 @@ export function buildSummaryRows(meta: ChatExportMeta, entries: TranscriptEntry[
     { label: 'Jumlah jawaban', value: String(answers) },
     { label: 'Diekspor', value: formatTimestamp(new Date().toISOString()) ?? '-' },
   ];
-
-  // Only when it happened — an always-present "0 pesan terkunci" row reads like
-  // a warning on a healthy export.
-  if (unreadable > 0) {
-    rows.push({
-      label: 'Peringatan',
-      value: `${unreadable} pesan tidak dapat didekripsi (enkripsi terkunci saat riwayat dibaca).`,
-    });
-  }
-  return rows;
 }

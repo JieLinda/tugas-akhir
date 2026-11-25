@@ -3,8 +3,6 @@ import 'server-only';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import * as schema from '@/lib/db/schema';
-import { decryptCandidateRow } from '@/lib/candidate-crypto';
-import { encryptIfEnabled, ensureUnlocked, LockedError } from '@/lib/crypto/key-store';
 import { isDemoMode } from '@/lib/app-mode';
 import { loadDemoCopies } from './store';
 import { isDemoEditableField, type DemoCandidateFields, type DemoEditableField } from './fields';
@@ -26,8 +24,7 @@ async function freshCopy(candidateId: string): Promise<{ copy: DemoCandidateFiel
     .where(and(eq(schema.candidates.id, candidateId), isNull(schema.candidates.deletedAt)))
     .limit(1);
   if (!row) return null;
-  await ensureUnlocked();
-  const c = decryptCandidateRow(row);
+  const c = row;
   return {
     tenantId: row.tenantId,
     copy: {
@@ -55,7 +52,7 @@ async function freshCopy(candidateId: string): Promise<{ copy: DemoCandidateFiel
 
 /**
  * Apply `patch` to the candidate's demo copy (created from the real record when
- * there is none) and store it sealed. The candidate's ON/OFF state is left as
+ * there is none) and store it. The candidate's ON/OFF state is left as
  * it is: these edits are made on candidates already in use.
  */
 export async function patchDemoCopy(
@@ -93,19 +90,13 @@ export async function patchDemoCopy(
       (f) => !(opts.unedit ?? []).includes(f),
     ),
   };
-  let sealed: string | null;
-  try {
-    sealed = await encryptIfEnabled(JSON.stringify(next));
-  } catch (err) {
-    if (err instanceof LockedError) throw new Error('Data tidak dapat disimpan: kunci enkripsi belum tersedia.');
-    throw err;
-  }
+  const payload = JSON.stringify(next);
   await db
     .insert(schema.candidatesDupp)
-    .values({ candidateId, tenantId, payload: sealed!, sealed: sealed!.startsWith('v1:'), updatedBy: actorId })
+    .values({ candidateId, tenantId, payload, sealed: false, updatedBy: actorId })
     .onConflictDoUpdate({
       target: schema.candidatesDupp.candidateId,
-      set: { payload: sealed!, sealed: sealed!.startsWith('v1:'), updatedBy: actorId, updatedAt: sql`now()` },
+      set: { payload, sealed: false, updatedBy: actorId, updatedAt: sql`now()` },
     });
   return next;
 }

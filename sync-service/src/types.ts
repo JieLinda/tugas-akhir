@@ -3,6 +3,21 @@ export type SyncResult = {
   message: string;
   synced: number;
   total: number;
+  /**
+   * Non-blocking findings about what was imported — a Company ID no mapping
+   * covers, an NPK that is not in Data Karyawan, a position or competency code
+   * nothing defines. The rows ARE stored (upload order legitimately varies), but
+   * they will not show in any company until the reference exists. The upload
+   * tile shows these as a warning toast; they are also appended to `message`.
+   */
+  warnings?: string[];
+  /**
+   * The Company IDs whose rows this run actually WROTE (Excel ingest only;
+   * absent = not known / not company-scoped). Used by routes/sync.ts to
+   * re-derive candidates for those companies alone; stripped before the result
+   * is sent.
+   */
+  companyIds?: string[];
 };
 
 export type SyncAllResult = {

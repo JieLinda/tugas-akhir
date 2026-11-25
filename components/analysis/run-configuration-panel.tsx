@@ -1204,8 +1204,8 @@ export function RunConfigurationPanel({ runId }: { runId: string }) {
 
       {reproCheck.repro && <ReproducibilityNotice repro={reproCheck.repro} />}
 
-      {/* The one banner that invalidates everything below it: the run could not
-          read the encrypted candidate columns, so four aspects are placeholders
+      {/* The one banner that invalidates everything below it: an older run that
+          could not read the then-encrypted candidate columns, so four aspects are placeholders
           rather than measurements. Placed first because reading the pairwise
           matrix of a run whose inputs were unreadable is time wasted. */}
       {encryptionGap && (
@@ -1221,8 +1221,8 @@ export function RunConfigurationPanel({ runId }: { runId: string }) {
               pendidikan, jurusan, rekomendasi behavior, kuadran HAV dan grade performance terbaca kosong.
               Aspek <b>{encryptionGap.affectedAspects.join(', ')}</b> pada run ini adalah nilai default
               (behavior 0, education 0, HAV 40, performance 33) — bukan hasil pengukuran. Peringkatnya efektif
-              hanya ditentukan technical dan career. Pasang master key pada scoring service, lalu jalankan
-              scoring ulang.
+              hanya ditentukan technical dan career. Jalankan scoring ulang untuk mendapatkan peringkat yang
+              terukur.
             </p>
           </div>
         </div>
@@ -1583,6 +1583,33 @@ export function RunConfigurationPanel({ runId }: { runId: string }) {
             </SnapshotItem>
             <SnapshotItem label="Dibawa dari induk (data kini dihapus / kini pejabat)">
               {snap.candidates.carriedDeleted != null ? `${snap.candidates.carriedDeleted} kandidat` : '—'}
+            </SnapshotItem>
+            <SnapshotItem label="Skala TOPSIS (pembagi dan titik ideal)">
+              {snap.config.topsis.mode === 'anchored'
+                ? `Skala run induk${snap.config.topsis.source === 'parent_pool' ? ' (diturunkan dari pool tersimpannya)' : ''} — kecocokan kandidat lama sama persis dengan di run induk, kandidat pembanding disisipkan.`
+                : snap.config.topsis.recorded || !snap.config.weights
+                  ? 'Dihitung dari pool run ini.'
+                  : 'Dihitung dari pool run ini (run dibuat sebelum skala TOPSIS dicatat).'}
+              {snap.candidates.topsisClamped && snap.candidates.topsisClamped.length > 0 && (
+                <>
+                  {' '}Di luar rentang run induk, sehingga dihitung pada ujung rentang itu (di atas
+                  nilai terbaik → setara terbaik; di bawah nilai terendah → setara terendah):{' '}
+                  {snap.candidates.topsisClamped
+                    .map((c) => {
+                      const label = (ks: string[]) => ks.map((k) => CRITERION_LABEL[k] ?? k).join(', ');
+                      const parts =
+                        c.above || c.below
+                          ? [
+                              c.above?.length ? `di atas: ${label(c.above)}` : null,
+                              c.below?.length ? `di bawah: ${label(c.below)}` : null,
+                            ].filter(Boolean)
+                          : [label(c.criteria)];
+                      return `${c.name} (${parts.join('; ')})`;
+                    })
+                    .join(' · ')}
+                  .
+                </>
+              )}
             </SnapshotItem>
           </SnapshotList>
         )}
@@ -2312,7 +2339,7 @@ export function RunConfigurationPanel({ runId }: { runId: string }) {
                     </SnapshotItem>
                     <SnapshotItem label="Syarat pendidikan" origin={snapCfg!.positionBasis.origin}>
                       {snapCfg!.positionBasis.educationSource === 'incumbent'
-                        ? 'Dari pendidikan pejabat (disimpan terenkripsi, tidak ditampilkan)'
+                        ? 'Dari pendidikan pejabat (tidak ditampilkan)'
                         : snapCfg!.positionBasis.educationRequirement ?? '—'}
                     </SnapshotItem>
                     <SnapshotItem label="Dokumen target karier" origin={snapCfg!.positionBasis.origin}>

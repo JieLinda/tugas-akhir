@@ -5,9 +5,8 @@ import * as schema from '@/lib/db/schema';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { liveCandidate } from '@/lib/candidate-visibility';
 import { getProgramTemplate, loadFilterableCandidates, syncTemplateCriteriaToPosition } from '@/lib/programs';
-import { getCurrentTenantId, TENANTS } from '@/lib/tenant';
+import { getCurrentTenantId, liveTenantIdSet, tenantNameMap } from '@/lib/tenant';
 import { requirePermission } from '@/lib/rbac';
-import { decryptCandidateRows } from '@/lib/candidate-crypto';
 import { isDemoMode } from '@/lib/app-mode';
 import { forCurrentMode, visibleCandidateIds } from '@/lib/demo/store';
 import { getIncumbentCandidateIds } from '@/lib/pulse-data';
@@ -37,13 +36,11 @@ export type FilterPreviewRow = {
  */
 async function resolveIncludedTenantIds(extra?: string[]): Promise<string[]> {
   const current = await getCurrentTenantId();
-  const valid = new Set(TENANTS.map((t) => t.id));
+  const valid = await liveTenantIdSet();
   return Array.from(
     new Set([current, ...(extra ?? []).filter((id) => valid.has(id))]),
   );
 }
-
-const TENANT_NAME_BY_ID = new Map(TENANTS.map((t) => [t.id, t.name]));
 
 // Demo mode: candidate names leave the server as initials (no-op otherwise).
 export async function previewProgramFilterAction(
@@ -78,12 +75,12 @@ async function previewProgramFilterActionImpl(input: {
     // Same live-only rule as the pool this map decorates, so the lookup can
     // never re-introduce someone loadFilterableCandidates already dropped.
     .where(and(inArray(schema.candidates.tenantId, tenantIds), liveCandidate()));
-  // current_position / department are encrypted at rest. Demo mode shows each
-  // candidate's demo copy (lib/demo/), like the pool this decorates.
+  // Demo mode shows each candidate's demo copy (lib/demo/), like the pool this decorates.
   const lookup = new Map(
-    (await forCurrentMode(decryptCandidateRows(candidateRows), (r) => r.id, { onlyOn: false })).map((r) => [r.id, r]),
+    (await forCurrentMode(candidateRows, (r) => r.id, { onlyOn: false })).map((r) => [r.id, r]),
   );
   const demo = await isDemoMode();
+  const tenantNames = await tenantNameMap();
   const incumbents = input.positionId ? new Set(await getIncumbentCandidateIds(input.positionId)) : null;
 
   return pool.map((d) => {
@@ -96,7 +93,7 @@ async function previewProgramFilterActionImpl(input: {
       currentPosition: meta?.currentPosition ?? null,
       department: meta?.department ?? null,
       tenantId: meta?.tenantId ?? null,
-      businessUnit: meta?.tenantId ? TENANT_NAME_BY_ID.get(meta.tenantId) ?? null : null,
+      businessUnit: meta?.tenantId ? tenantNames.get(meta.tenantId) ?? null : null,
       ...(incumbents ? { incumbent: incumbents.has(d.id) } : {}),
     };
   });
@@ -162,15 +159,14 @@ async function prepareMatrixActionImpl(input: {
           ),
         );
 
-  // name is encrypted at rest — decrypt, then order by name here. Demo mode
-  // shows the demo copies.
-  const decrypted = (await forCurrentMode(decryptCandidateRows(candidateRows), (r) => r.id, { onlyOn: false })).sort((a, b) =>
+  // Ordered by name here, after demo mode has applied the demo copies.
+  const sorted = (await forCurrentMode(candidateRows, (r) => r.id, { onlyOn: false })).sort((a, b) =>
     (a.name ?? '').localeCompare(b.name ?? ''),
   );
 
   return {
     criteriaCount: criteriaRows.length,
-    candidates: decrypted,
+    candidates: sorted,
   };
 }
 
@@ -191,17 +187,15 @@ export async function previewGradeFilterCountAction(input: {
   await requirePermission('scoring.run');
   const tenantIds = await resolveIncludedTenantIds(input.includedTenantIds);
 
-  const decryptedAll = decryptCandidateRows(
-    await db
-      .select({ id: schema.candidates.id, grade: schema.candidates.grade })
-      .from(schema.candidates)
-      // `total`, `filtered` and `gradeFiltered` are all derived from this one
-      // array, so filtering here keeps the three numbers consistent.
-      .where(and(inArray(schema.candidates.tenantId, tenantIds), liveCandidate())),
-  );
+  const liveRows = await db
+    .select({ id: schema.candidates.id, grade: schema.candidates.grade })
+    .from(schema.candidates)
+    // `total`, `filtered` and `gradeFiltered` are all derived from this one
+    // array, so filtering here keeps the three numbers consistent.
+    .where(and(inArray(schema.candidates.tenantId, tenantIds), liveCandidate()));
   // Demo mode counts only the candidates switched ON — the only ones a run takes.
-  const visible = new Set(await visibleCandidateIds(decryptedAll.map((c) => c.id)));
-  const allCandidates = decryptedAll.filter((c) => visible.has(c.id));
+  const visible = new Set(await visibleCandidateIds(liveRows.map((c) => c.id)));
+  const allCandidates = liveRows.filter((c) => visible.has(c.id));
 
   if (allCandidates.length === 0) return { total: 0, filtered: 0, gradeFiltered: 0 };
 

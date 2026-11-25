@@ -3,8 +3,6 @@ import 'server-only';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { candidateDemoStates, candidates, candidatesDupp } from '@/lib/db/schema';
-import { decryptOrNull, ensureUnlocked } from '@/lib/crypto/key-store';
-import { decryptCandidateRows } from '@/lib/candidate-crypto';
 import { deriveHavQuadrant } from '@/lib/hav-quadrant-derive';
 import { isDemoMode } from '@/lib/app-mode';
 import {
@@ -37,7 +35,7 @@ export function demoFormulaOf(performanceGrade: string | null, behaviorRecommend
   return derived.ok ? String(derived.quadrant) : null;
 }
 
-/** The candidates' real values for every field a demo copy can edit, decrypted. */
+/** The candidates' real values for every field a demo copy can edit. */
 async function loadRealValues(ids: string[]): Promise<Map<string, DemoRealValues>> {
   const out = new Map<string, DemoRealValues>();
   if (ids.length === 0) return out;
@@ -64,7 +62,7 @@ async function loadRealValues(ids: string[]): Promise<Map<string, DemoRealValues
     .from(candidates)
     .where(inArray(candidates.id, ids));
   const s = (v: unknown) => (v == null ? null : String(v));
-  for (const r of decryptCandidateRows(rows)) {
+  for (const r of rows) {
     out.set(r.id, {
       name: s(r.name),
       employeeId: s(r.employeeId),
@@ -88,7 +86,7 @@ async function loadRealValues(ids: string[]): Promise<Map<string, DemoRealValues
 }
 
 /**
- * Demo copies, decrypted and RESOLVED, for these candidates (every copy when
+ * Demo copies, RESOLVED, for these candidates (every copy when
  * `ids` is omitted): each one is the fields edited in demo mode over the
  * candidate's real values as they stand now (`resolveDemoCopy`), with
  * `editedFields` set. Every reader — the row overlay, scoring pools, Talent
@@ -126,18 +124,16 @@ async function loadStoredDemoCopies(ids?: string[]): Promise<Map<string, DemoCan
     }
     throw err;
   }
-  if (rows.length === 0) return out;
-  await ensureUnlocked();
   for (const r of rows) {
-    // A copy that cannot be opened (locked app) is skipped, not shown raw:
-    // the candidate then reads as its real data rather than as ciphertext.
-    const copy = parseDemoPayload(decryptOrNull(r.payload).value);
+    // A copy that does not parse is skipped: the candidate then reads as its
+    // real data.
+    const copy = parseDemoPayload(r.payload);
     if (copy) out.set(r.candidateId, copy);
   }
   return out;
 }
 
-/** Which of these candidates have a demo copy — ids only, nothing decrypted. */
+/** Which of these candidates have a demo copy — ids only. */
 export async function loadDemoCopiedIds(ids: string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
   try {
@@ -187,7 +183,7 @@ export type DemoPresentOptions = {
 };
 
 /**
- * The demo view of decrypted candidate rows: OFF candidates removed when asked,
+ * The demo view of candidate rows: OFF candidates removed when asked,
  * the dupp copy applied, photos removed. `idOf` reads a row's candidate id.
  */
 export async function presentRowsForDemo<T extends object>(

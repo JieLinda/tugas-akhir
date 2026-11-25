@@ -7,12 +7,18 @@ import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import * as schema from '@/lib/db/schema';
 import type { AhpConfig, DefaultCriterion } from '@/lib/db/schema';
-import { normalizeFilterTree, toFilterTreeSet } from '@/lib/filter-rules';
+import { normalizeFilterTree, toFilterTreeSet, validateFilterTree } from '@/lib/filter-rules';
 import { decideAhpSave } from '@/lib/ahp-save-rules';
 import { ensureLocalUser } from '@/lib/pulse-data';
 import { getCurrentTenantId } from '@/lib/tenant';
 import { logAudit } from '@/lib/audit';
 import { getProgramTemplate } from '@/lib/programs';
+
+/** The same refusal the Talent Pool page gives (lib/filter-rules.ts validateFilterTree). */
+function assertValidFilterTree(tree: ReturnType<typeof normalizeFilterTree>): void {
+  const problems = validateFilterTree(tree);
+  if (problems.length > 0) throw new Error(`Aturan filter belum bisa disimpan: ${problems.join(' ')}`);
+}
 
 /** The finalist target N (the top-N cut of an AHP+TOPSIS ranking), clamped to 1..50. */
 function parseTargetFinalists(value: FormDataEntryValue | null, fallback = 10) {
@@ -39,6 +45,7 @@ export async function createProgramTemplateAction(formData: FormData) {
   const defaultCriteriaRaw = formData.get('defaultCriteria') as string | null;
 
   const filterTree = normalizeFilterTree(filterRulesRaw ? JSON.parse(filterRulesRaw) : null);
+  assertValidFilterTree(filterTree);
   const defaultCriteria: DefaultCriterion[] = defaultCriteriaRaw ? JSON.parse(defaultCriteriaRaw) : [];
 
   const [inserted] = await db
@@ -125,7 +132,9 @@ export async function updateProgramTemplateAction(formData: FormData) {
   if (enforceFilterRulesEntry !== null) patch.enforceFilterRules = enforceFilterRulesEntry === 'true';
   const filterRulesRaw = formData.get('filterRules') as string | null;
   if (filterRulesRaw) {
-    patch.filterRules = toFilterTreeSet(normalizeFilterTree(JSON.parse(filterRulesRaw))) as unknown as object;
+    const tree = normalizeFilterTree(JSON.parse(filterRulesRaw));
+    assertValidFilterTree(tree);
+    patch.filterRules = toFilterTreeSet(tree) as unknown as object;
   }
   const defaultCriteriaRaw = formData.get('defaultCriteria') as string | null;
   if (defaultCriteriaRaw) patch.defaultCriteria = JSON.parse(defaultCriteriaRaw) as unknown as object;

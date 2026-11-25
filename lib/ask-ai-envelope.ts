@@ -8,10 +8,10 @@
  * hides the payload; clicking it returns the reader to the exact tab and section
  * they asked from.
  *
- * WHY IN THE MESSAGE TEXT rather than a new column. `chat_messages` stores an
- * encrypted `content` string and nothing else, and history is replayed from it.
+ * WHY IN THE MESSAGE TEXT rather than a new column. `chat_messages` stores a
+ * `content` string and nothing else, and history is replayed from it.
  * A sidecar column would have to be threaded through the save path, the read
- * path, the encryption helper and the streaming route; an envelope inside the
+ * path and the streaming route; an envelope inside the
  * text travels for free and degrades gracefully — an older client, or a message
  * whose header is malformed, simply shows the text as it always did.
  *

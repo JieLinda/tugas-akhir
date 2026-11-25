@@ -16,7 +16,7 @@
  *
  * WRITE (--write) drives the server action through the review loop on one real
  * candidate and checks every reader of the HAV in force: the placement row, the
- * audit trail (sealed, naming the actor), the Talent Pool list, the scoring
+ * audit trail (naming the actor), the Talent Pool list, the scoring
  * eligibility loader, and scoring-service's own resolver. It then checks the
  * sync side INSIDE ROLLED-BACK TRANSACTIONS (sync-service hav-supersede.ts): an
  * upload that changes the quadrant timestamps the candidate, supersedes the
@@ -92,7 +92,6 @@ async function main() {
   const { loadManualHavQuadrants } = await import('../lib/hav-placements');
   const { TALENT_MAPPING_BA_HISTORY_DEPTH } = await import('../lib/talent-mapping');
   const actions = await import('../lib/talent-mapping-actions');
-  const { isInitialized } = await import('../lib/crypto/key-store');
   const rows = async <T,>(q: ReturnType<typeof sql>) => ((await db.execute(q)) as unknown as { rows: T[] }).rows;
 
   // ── READ ─────────────────────────────────────────────────────────────
@@ -181,7 +180,6 @@ async function main() {
 
   // ── WRITE round trip (Mulia) ─────────────────────────────────────────
   currentTenant = TENANTS[0][1];
-  const sealedExpected = await isInitialized();
   const startedAt = new Date(Date.now() - 1000);
   const map = await getTalentMappingData();
   const c =
@@ -234,9 +232,6 @@ async function main() {
       sql`SELECT quadrant, justification, placed_by_username, baseline_source FROM talent_mapping_placements WHERE candidate_id = ${c.id}`,
     );
     check(Boolean(placement), 'placement row written');
-    if (sealedExpected) {
-      check(placement?.quadrant.startsWith('v1:') && placement.justification.startsWith('v1:'), 'placement quadrant + justification are sealed');
-    }
     check(placement?.placed_by_username === SYSTEM.email, 'placement names the actor', placement?.placed_by_username);
     check(placement?.baseline_source === auto.source, 'baseline_source stored', placement?.baseline_source);
 
@@ -271,14 +266,13 @@ async function main() {
       'actions are recorded in order',
       audit.map((a) => a.action),
     );
-    if (sealedExpected) check(audit.every((a) => (a.justification_reason ?? '').startsWith('v1:')), 'audit justifications are sealed');
 
     const history = (await actions.getTalentMappingCandidateHistoryAction(c.id)).filter((h) => new Date(h.timestamp) >= startedAt);
     check(
       history.length === 3 && history[0]?.action === 'revert_to_automatic' && history[0].toQuadrant === auto.quadrant &&
         history[2]?.fromQuadrant === from && history[2].toQuadrant === to && history[2].baselineQuadrant === auto.quadrant &&
         history[2].justification === why,
-      'history reads back newest first, decrypted, with the automatic answer at the time',
+      'history reads back newest first, with the automatic answer at the time',
       history.map((h) => [h.action, h.fromQuadrant, h.toQuadrant, h.baselineQuadrant]),
     );
 
@@ -296,11 +290,9 @@ async function main() {
       // The app's own pool (lib/db): a dedicated client so BEGIN/ROLLBACK wrap only this block.
       const { pool } = await import('../lib/db');
       const sync = await import('../sync-service/src/services/hav-supersede');
-      const { resolveWriteMode } = await import('../sync-service/src/services/crypto');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the root project has no @types/pg
       const client: any = await pool.connect();
       try {
-        const writeMode = await resolveWriteMode();
         const employeeId = (await client.query(`SELECT employee_id AS e FROM candidates WHERE id = $1`, [c.id])).rows[0]!.e;
 
         await client.query('BEGIN');
@@ -325,10 +317,10 @@ async function main() {
         const priorAuto = priorHav.get(employeeId) ? sync.automaticHav(priorHav.get(employeeId)!.inputs) : null;
         check(
           priorAuto?.quadrant === c.automatic.quadrant && priorAuto?.source === c.automatic.source,
-          'sync-service decrypts the same automatic HAV the map shows',
+          'sync-service reads the same automatic HAV the map shows',
           { sync: priorAuto, map: c.automatic },
         );
-        const applied = await sync.applyHavUploadChanges(client, changes, writeMode, 'hav_upload');
+        const applied = await sync.applyHavUploadChanges(client, changes, 'hav_upload');
         check(applied.placementsSuperseded === 1, 'the changed upload supersedes the older manual placement', applied);
         check(applied.candidatesUpdated >= 1, 'and writes the candidate\'s HAV immediately', applied);
         check(applied.stamped >= 1, 'and timestamps the change', applied);
@@ -369,7 +361,6 @@ async function main() {
               tier: 'formula',
             },
           ],
-          writeMode,
           'candidate_sync',
         );
         check(viaSync.superseded === 1 && viaSync.stamped === 1, 'a candidate-sync change supersedes the older placement', viaSync);

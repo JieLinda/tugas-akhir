@@ -80,7 +80,10 @@ describe('TC-RRN  re-run modes', () => {
 
   test('TC-RRN-02 the creatable mode says the parent is frozen; legacy rows keep their own sentence', () => {
     assert.match(RERUN_MODES.incremental_add.description, /dibekukan/);
-    assert.match(RERUN_MODES.incremental_add.expectation, /himpunan alternatif/);
+    // The parent's TOPSIS yardstick is frozen too: carried candidates keep their
+    // order and closeness; the sentence must say so (and still cover old children).
+    assert.match(RERUN_MODES.incremental_add.description, /skala TOPSIS/);
+    assert.match(RERUN_MODES.incremental_add.expectation, /tetap pada urutan dan kecocokan run induk/);
     // Legacy rows describe what THEY did, so a run made under them still reads right.
     assert.match(RERUN_MODES.refresh_full.expectation, /data HR/);
     assert.match(RERUN_MODES.exclude.expectation, /menyempitnya/);

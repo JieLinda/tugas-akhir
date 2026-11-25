@@ -6,29 +6,34 @@ HAV dan MCU, Kamus Kompetensi (PDF), dan Job Profile (PDF).
 
 Isinya satu unit bisnis rekaan: **46 karyawan** (NPK `99001`–`99046`), **40 posisi** (kode `DM…`),
 5 divisi, 8 departemen, lengkap dengan riwayat jabatan, PA lima tahun, assessment perilaku, catatan
-disiplin, pendidikan, MCU, dan HAV. Semua berkas saling cocok: NPK di berkas HAV ada di berkas karyawan,
-POSITION_ID di berkas penempatan ada di master jabatan, dan seterusnya. Siapa saja orangnya dan apa
-yang ingin diperlihatkan dari masing-masing ada di [`ringkasan-data-demo.md`](ringkasan-data-demo.md).
+disiplin, pendidikan, MCU, dan HAV. Siapa saja orangnya dan apa yang ingin diperlihatkan dari
+masing-masing ada di [`ringkasan-data-demo.md`](ringkasan-data-demo.md).
 
-> **Sel yang merujuk ke data di database Anda sengaja DIKOSONGKAN** (sel kuning). Isi dulu sebelum
-> mengunggah — lihat bagian [Sel kuning dan jingga](#sel-kuning-dan-jingga).
+**Set ini lengkap dan saling merujuk — tidak ada sel yang perlu diisi.** Semua kunci asing terisi dan
+menunjuk ke berkas lain di set ini: COMPANY_ID = **`DEMO`** di kesepuluh berkas ber-company, NPK di
+berkas penempatan/kompetensi/PA/perilaku/disiplin/pendidikan/MCU/HAV ada di Data Karyawan, POSITION_ID
+dan atasan di hierarki ada di Master Jabatan, GRADE_ID ada di Level & Grade, TECHNICAL_ID (`TC 901`–`TC 914`)
+didefinisikan oleh PDF kamus demo, dan nama berkas Job Profile diawali kode posisi dari Master Jabatan.
+Semua NPK sudah dalam bentuk baku (5 digit, `LPAD`), jadi cocok di tabel yang menyimpan NPK berpadding
+maupun yang tidak. Kesesuaian itu dicek otomatis — lihat [Bagaimana berkas ini diuji](#bagaimana-berkas-ini-diuji).
+Yang perlu Anda lakukan hanya satu: **memetakan Company ID `DEMO` ke sebuah Company** (langkah 3 di bawah).
 
 ## Isi folder
 
-| Berkas | Kartu di Sinkronisasi | Masuk ke tabel | Baris | Sel kuning (wajib diisi) |
+| Berkas | Kartu di Tambah Data | Masuk ke tabel | Baris | Merujuk ke |
 |---|---|---|---|---|
-| `excel/01-data-karyawan.xlsx` | Data Karyawan | `sync_employees` | 46 | COMPANY_ID |
-| `excel/02-level-grade.xlsx` | Level & Grade | `sync_grade_levels` | 12 | COMPANY_ID |
-| `excel/03-master-jabatan.xlsx` | Master Jabatan | `sync_positions` | 40 | COMPANY_ID |
-| `excel/04-hierarki-jabatan.xlsx` | Hierarki Jabatan | `sync_position_hierarchy` | 40 | COMPANY_ID (+ jingga: PARENT_POSITION_ID baris puncak) |
-| `excel/05-penempatan-karyawan.xlsx` | Penempatan Karyawan | `sync_employee_positions` | 66 | COMPANY_ID |
-| `excel/06-kompetensi-teknis.xlsx` | Kompetensi Teknis | `sync_technical_competencies` | 110 | COMPANY_ID, TECHNICAL_ID |
-| `excel/07-penilaian-kinerja.xlsx` | Penilaian Kinerja | `sync_performance_appraisals` | 218 | COMPANY_ID |
-| `excel/08-kompetensi-perilaku.xlsx` | Kompetensi Perilaku | `sync_behavior_competencies` | 45 → 43 karyawan | COMPANY_ID |
-| `excel/09-catatan-disiplin.xlsx` | Catatan Disiplin | `sync_disciplinary` | 6 | COMPANY_ID |
-| `excel/10-riwayat-pendidikan.xlsx` | Riwayat Pendidikan | `sync_education` | 51 | COMPANY_ID |
-| `excel/11-status-mcu.xlsx` | Status MCU | `sync_mcu` | 44 | — |
-| `excel/12-hav-quadrant.xlsx` | HAV Quadrant | `sync_hav` → `candidates` | 13 | — |
+| `excel/01-data-karyawan.xlsx` | Data Karyawan | `sync_employees` | 46 | Company ID `DEMO`, grade (02), jabatan (03) |
+| `excel/02-level-grade.xlsx` | Level & Grade | `sync_grade_levels` | 12 | `DEMO` |
+| `excel/03-master-jabatan.xlsx` | Master Jabatan | `sync_positions` | 40 | `DEMO`, grade (02) |
+| `excel/04-hierarki-jabatan.xlsx` | Hierarki Jabatan | `sync_position_hierarchy` | 40 | `DEMO`, posisi + atasan (03) |
+| `excel/05-penempatan-karyawan.xlsx` | Penempatan Karyawan | `sync_employee_positions` | 66 | `DEMO`, NPK (01), posisi (03) |
+| `excel/06-kompetensi-teknis.xlsx` | Kompetensi Teknis | `sync_technical_competencies` | 110 | `DEMO`, NPK (01), posisi (03), grade (02), kode kamus (13) |
+| `excel/07-penilaian-kinerja.xlsx` | Penilaian Kinerja | `sync_performance_appraisals` | 218 | `DEMO`, NPK (01) |
+| `excel/08-kompetensi-perilaku.xlsx` | Kompetensi Perilaku | `sync_behavior_competencies` | 45 → 43 karyawan | `DEMO`, NPK (01) |
+| `excel/09-catatan-disiplin.xlsx` | Catatan Disiplin | `sync_disciplinary` | 6 | `DEMO`, NPK (01) |
+| `excel/10-riwayat-pendidikan.xlsx` | Riwayat Pendidikan | `sync_education` | 51 | `DEMO`, NPK (01) |
+| `excel/11-status-mcu.xlsx` | Status MCU | `sync_mcu` | 44 | NPK (01) |
+| `excel/12-hav-quadrant.xlsx` | HAV Quadrant | `sync_hav` → `candidates` | 13 | NPK (01) |
 | `pdf/kamus-kompetensi/13-kamus-kompetensi-demo.pdf` | Kamus Kompetensi | `sync_kamus_kompetensi` | 14 kompetensi | — |
 | `pdf/job-profile/*.pdf` (6 berkas) | Job Profile | `sync_job_profiles` | 6 dokumen | — |
 | `sql/cek-sebelum-unggah.sql` | — | hanya membaca | | |
@@ -40,11 +45,34 @@ Setiap workbook punya sheet **Petunjuk Demo** (selalu di belakang sheet data, ka
 pertama dan HAV hanya membaca sheet `ALL`). Nama sheet data dan header kolom sama persis dengan template
 yang bisa diunduh dari kartunya, jadi berkas ini bisa dipakai bergantian dengan template.
 
-## Sel kuning dan jingga
+## Company ID `DEMO` dan Company tujuan
+
+`DEMO` hanya kode; Company Pulse tempat datanya tampil ditentukan oleh pemetaan di **Tambah Data →
+Pemetaan Company ID → Company**. Tujuannya boleh Company bawaan (Mulia/MSO/ERRO) **atau Company yang
+Anda tambahkan sendiri** lewat tanda **+** di dropdown Company — perilakunya sama. Disarankan Company
+tersendiri (mis. "Demo") supaya data demo terpisah dan mudah dihapus.
+
+Pencocokan Company ID tidak peka huruf besar/kecil dan spasi: unggahan menyimpannya dalam huruf besar
+(`demo ` menjadi `DEMO`), sama seperti pemetaan. NPK juga dibakukan saat unggah — tabel yang menyimpan
+NPK berpadding 5 digit (penempatan, kompetensi, PA, perilaku) dan yang mengikuti ejaan Data Karyawan
+(karyawan, disiplin, pendidikan) masing-masing ditulis dalam bentuknya, sehingga `370`, `0370`, dan
+`00370` tetap satu orang.
+
+Bila sesuatu belum terhubung, unggahan tetap menyimpan barisnya tetapi menampilkan **peringatan**
+(toast kuning): Company ID belum dipetakan, NPK tidak ada di Data Karyawan, kode posisi tidak ada di
+Master Jabatan, atau TECHNICAL_ID tidak ada di Kamus Kompetensi. Berkas dengan header yang tidak sesuai
+template **ditolak** dan tidak menulis apa pun.
+
+## Varian dengan sel kuning (untuk database asli)
+
+Untuk memakai kode company asli atau kamus asli Anda, buat varian dengan generator:
+`--company KODE` (mis. `MPM9`) atau `--blank` (COMPANY_ID dan TECHNICAL_ID dikosongkan dan diwarnai
+kuning, untuk diisi dari database Anda). Penjelasan sel kuning di bawah berlaku untuk varian `--blank`.
+
 
 **Kuning = wajib diisi dengan nilai dari database Anda.** **Jingga = opsional.** Sel lain sudah terisi.
 
-### COMPANY_ID (kuning, di sepuluh berkas Excel pertama)
+### COMPANY_ID (kuning, di sepuluh berkas Excel pertama — varian `--blank`)
 
 Nilainya harus Company ID yang **aktif** di **Sinkronisasi → Pemetaan Company ID → Company**
 (`sync_company_tenant_map`), karena dari situlah sistem tahu data masuk ke Company Pulse yang mana.
@@ -55,13 +83,11 @@ supaya data demo terpisah dari company asli dan mudah dihapus. Maksimal 10 karak
 
 Cara cepat: blok semua sel kuning di kolom COMPANY_ID, ketik kodenya, tekan **Ctrl+Enter**.
 
-> **Awas di `01-data-karyawan.xlsx`.** Di sumber Data Karyawan, COMPANY_ID **bukan** kolom wajib: berkas
-> dengan COMPANY_ID kosong tetap diterima ("46 baris … diproses") tetapi karyawannya masuk **tanpa company**
-> sehingga tidak pernah menjadi kandidat — dan bila diunggah setelah versi yang benar, company mereka
-> ikut terhapus. Sembilan berkas lainnya justru menolak baris tanpa COMPANY_ID ("… baris dilewati karena
-> kolom wajib kosong (baris 2: COMPANY_ID kosong; …)"), jadi kelupaan di sana langsung terlihat.
+Kesepuluh berkas menolak baris tanpa COMPANY_ID ("… baris dilewati karena kolom wajib kosong (baris 2:
+COMPANY_ID kosong; …)"), termasuk Data Karyawan — dulu kolom itu tidak wajib di sana, sehingga karyawan
+tanpa company diam-diam tidak pernah menjadi kandidat.
 
-### TECHNICAL_ID (kuning, di `06-kompetensi-teknis.xlsx`)
+### TECHNICAL_ID (kuning, di `06-kompetensi-teknis.xlsx` — varian `--blank`)
 
 Kode kompetensi di Kamus Kompetensi database Anda (`sync_kamus_kompetensi.code`, mis. `TC 012`). Baris
 tanpa kode **dilewati**. Sheet **Kode Kompetensi** di berkas itu mendaftar 14 nama kompetensi yang dipakai
@@ -97,18 +123,21 @@ HAV, MCU, dan kedua jenis PDF tidak punya kolom yang merujuk ke database.
 
    Bagian 2 dan 3 harus kosong. Bila NPK `99001`–`99046` sudah dipakai, buat set berkas dengan rentang
    lain (lihat [Membuat ulang berkas](#membuat-ulang-berkas)).
-3. **Buat pemetaan Company ID** (mis. `DEMO` → Mulia) di Sinkronisasi → *Pemetaan Company ID → Company*.
-4. **Isi sel kuning** di sepuluh berkas Excel pertama.
+3. **Buat pemetaan Company ID `DEMO`** → Company tujuan di Tambah Data → *Pemetaan Company ID → Company*
+   (Company bawaan atau yang Anda tambahkan lewat **+** di dropdown Company).
+4. Pilih Company tujuan itu di dropdown Company supaya hasilnya langsung terlihat.
 
 ## Urutan unggah dan hasil yang diharapkan
 
-Semua di **Pengaturan → Sinkronisasi**. Unggahan Excel diproses langsung lalu berkasnya dihapus dari server.
-Pesan di bawah adalah hasil uji pada database kosong (unggahan pertama).
+Semua di **Tambah Data**. Unggahan diproses langsung lalu berkasnya dihapus dari server, dan **perubahannya
+langsung diteruskan ke Company**: setiap unggahan menjalankan sendiri sinkronisasi posisi, kandidat, dan
+kompetensi teknis kandidat yang bergantung padanya — tidak perlu menekan tombol Kandidat atau menunggu
+sinkronisasi Senin. Pesan di bawah adalah hasil uji pada database tanpa data demo (unggahan pertama).
 
 | # | Langkah | Pesan yang muncul |
 |---|---|---|
 | 1 | Kartu **Data Karyawan** ← `01-data-karyawan.xlsx` | 46 baris Data Karyawan diproses (46 baru, 0 diperbarui) |
-| 2 | Tombol sinkron **Struktur Org** (kelompok Database) | divisions 5 · departments 8 (ditambah divisi/departemen company lain) |
+| 2 | *(opsional)* Tombol sinkron **Struktur Org** (kelompok Database) | Menarik divisi/departemen dari MSSQL; tidak diperlukan — kandidat membaca divisi dan departemen dari Data Karyawan |
 | 3 | Kartu **Level & Grade** ← `02-level-grade.xlsx` | 12 baris Level & Grade diproses (12 baru, 0 diperbarui) |
 | 4 | Kartu **Master Jabatan** ← `03-master-jabatan.xlsx` | 40 baris Master Jabatan diproses (40 baru, 0 diperbarui) |
 | 5 | Kartu **Hierarki Jabatan** ← `04-hierarki-jabatan.xlsx` | 40 baris Hierarki Jabatan diproses (40 baru, 0 diperbarui) |
@@ -119,23 +148,23 @@ Pesan di bawah adalah hasil uji pada database kosong (unggahan pertama).
 | 10 | Kartu **Catatan Disiplin** ← `09-catatan-disiplin.xlsx` | 6 baris Catatan Disiplin diproses (6 baru, 0 diperbarui) |
 | 11 | Kartu **Riwayat Pendidikan** ← `10-riwayat-pendidikan.xlsx` | 51 baris Riwayat Pendidikan diproses (51 baru, 0 diperbarui) |
 | 12 | Kartu **Status MCU** ← `11-status-mcu.xlsx` | 44 record MCU diproses (44 baru, 0 diperbarui) |
-| 13 | Tombol sinkron **Kandidat** (kelompok Turunan) | Populated 46 candidates and 66 position-history rows … (angka lebih besar bila company asli ikut diproses) |
+| 13 | *(tidak perlu lagi)* Tombol sinkron **Kandidat** | Kandidat sudah terbentuk sejak langkah 1 dan diperbarui di setiap unggahan; pesan tiap unggahan menyertakan "Populated … candidates" |
 | 14 | Kartu **HAV Quadrant** ← `12-hav-quadrant.xlsx` | 13 record HAV diproses (13 baru, 0 diperbarui). 13 kuadran berubah: 13 kandidat langsung diperbarui … |
 | 15 | *(opsional)* Kartu **Kamus Kompetensi** ← `13-kamus-kompetensi-demo.pdf` | Kamus kompetensi synced dari 1 file PDF (toast: 14 dari 14 record) |
 | 16 | *(opsional)* Kartu **Job Profile** ← 6 PDF di `pdf/job-profile/`, centang Company tujuan | Diproses di latar belakang oleh model visi (`LLM_BASE_URL`); pantau di Dokumen → Dokumen Job Profile |
 
 Catatan urutan:
 
-- **Status MCU sebelum Kandidat.** Status MCU baru masuk ke kandidat saat sinkronisasi Kandidat berjalan.
-  Bila MCU diunggah sesudahnya, jalankan Kandidat sekali lagi.
-- **HAV sesudah Kandidat** supaya pesan "N kandidat langsung diperbarui" terlihat. Diunggah sebelumnya
-  juga benar: nilainya disalin saat sinkronisasi Kandidat.
+- **Urutan tidak lagi menentukan hasil akhir**: setiap unggahan langsung meneruskan perubahannya ke kandidat
+  dan posisi Company. Urutan di tabel tetap yang paling sedikit memunculkan peringatan sementara — misalnya
+  Kompetensi Teknis sebelum Kamus memperingatkan bahwa kode TC 9xx belum dikenal, sampai kamusnya diunggah.
+- **HAV sesudah Data Karyawan** supaya pesan "N kandidat langsung diperbarui" terlihat.
 - Tombol **Struktur Org** dan **Kandidat** memproses semua pemetaan company di filter Company yang dipilih
   (bawaan: semua) — sama dengan sinkronisasi mingguan, jadi aman.
 - Jangan menekan tombol sinkron kelompok Database lain (Karyawan, Position Mapping, …) untuk demo ini:
   tombol itu menarik dari MSSQL, bukan dari berkas.
-- Bila TECHNICAL_ID memakai kode TC 9xx, kamus demo (langkah 15) boleh diunggah kapan saja — kode tidak
-  divalidasi saat unggah — tetapi kodenya baru bermakna (nama, level, embedding) setelah kamusnya ada.
+- Kamus demo (langkah 15) boleh diunggah kapan saja; sebelum ada, unggahan Kompetensi Teknis menyimpan
+  barisnya dengan peringatan, dan kodenya baru bermakna (nama, level, embedding) setelah kamusnya ada.
 - Mengunggah ulang berkas yang sama menghasilkan "0 baru, N diperbarui"; HAV yang sama: "0 kuadran berubah".
 
 ## Yang bisa diperagakan sesudahnya
@@ -164,9 +193,6 @@ Dengan aturan bawaan program (bila aturan di Tata Kelola sudah diubah, angkanya 
   untuk karyawan demo.
 - **Foto** kandidat menunjuk ke server HR (`…/EmployeePersonalInfo/99001.jpg`) yang tidak punya foto mereka;
   aplikasi menampilkan avatar pengganti.
-- **Keterangan MCU tidak sampai ke kandidat.** Kolom `Keterangan`/`Kesimpulan` tersimpan di `sync_mcu`, tetapi
-  sinkronisasi Kandidat saat ini tidak menyalinnya ke `candidates.mcu_note` (lihat catatan temuan di bawah).
-  Status MCU-nya (fit / fit_with_note / unfit) tetap masuk.
 - **Job Profile** butuh model visi yang aktif; tanpa itu dokumen berstatus gagal ("Connection error").
 
 ## Membersihkan data demo
@@ -191,7 +217,8 @@ menghasilkan byte yang sama.
 
 ```bash
 pip install openpyxl reportlab
-python3 demo-data/generate.py                    # set ini (sel kuning kosong), tanggal acuan = hari ini
+python3 demo-data/generate.py --as-of 2026-11-18   # set ini (COMPANY_ID=DEMO, kode kamus TC 9xx)
+python3 demo-data/generate.py --skip-pdf           # Excel saja (tanpa reportlab)
 ```
 
 Tanggal yang menentukan kategori — tiga tahun PA yang dibaca sinkronisasi Kandidat dan tanggal surat
@@ -203,16 +230,44 @@ Varian ditulis ke folder lain (perintah menolak menimpa set ini):
 ```bash
 # rentang NPK lain bila 99001-99046 sudah dipakai
 python3 demo-data/generate.py --npk-prefix 98 --out /tmp/demo-npk98
-# database demo mandiri: COMPANY_ID dan TECHNICAL_ID (kode kamus demo) langsung terisi
-python3 demo-data/generate.py --company DEMO --kamus-demo-codes --out /tmp/demo-terisi
+# Company ID lain
+python3 demo-data/generate.py --company MPM9 --out /tmp/demo-mpm9
+# COMPANY_ID dan TECHNICAL_ID dikosongkan (kuning), untuk diisi dari database asli
+python3 demo-data/generate.py --blank --out /tmp/demo-kosong
 ```
 
 `sql/` dan `ringkasan-data-demo.md` ikut dibuat ulang dengan identitas varian tersebut.
 
 ## Bagaimana berkas ini diuji
 
-Set ini dijalankan melalui **sync-service asli** (server HTTP-nya, endpoint unggah yang sama dengan halaman
-Sinkronisasi) pada PostgreSQL yang dibangun dari semua migrasi `drizzle/`:
+Dua skrip di `sync-service/scripts/`, jalankan ulang setiap kali set dibuat ulang:
+
+```bash
+cd sync-service
+# 1. statis (tanpa database): kontrak template + SEMUA kunci asing antar-berkas
+npx tsx scripts/verify-demo-data.ts ../demo-data
+# 2. ujung ke ujung, ke sync-service yang berjalan (butuh SYNC_SYSTEM_USER_ID di service itu)
+DATABASE_URL=… npx tsx scripts/verify-demo-upload.ts --sync http://localhost:8000 --web http://localhost:3000
+```
+
+`verify-demo-data.ts` membaca berkas seperti pengunggah membacanya (header dan nama sheet terhadap
+`excel-sources.ts`, NPK lewat `npkKey`, kamus lewat `parseKamusPdf`) dan memeriksa setiap rujukan: satu
+COMPANY_ID huruf besar, NPK unik dan sudah baku, setiap NPK/POSITION_ID/GRADE_ID/TECHNICAL_ID ada di
+berkas sumbernya, penempatan primer terbuka tiap karyawan sesuai jabatannya, dan setiap PDF Job Profile
+diawali kode posisi yang ada serta memuat kompetensi yang dituntut untuk kursinya.
+
+`verify-demo-upload.ts` membuat Company **bukan bawaan** khusus untuk uji, mengunggah semua berkas
+dengan dua permintaan yang sama seperti kartu Tambah Data, lalu memastikan: berkas ber-header salah
+ditolak tanpa menulis apa pun; peringatan muncul untuk Company ID belum dipetakan, NPK di luar Data
+Karyawan, posisi di luar Master Jabatan, dan kode di luar kamus; `demo ` tersimpan sebagai `DEMO`; NPK
+`8999` tersimpan `08999` di tabel berpadding dan `8999` di tabel berejaan karyawan, dan keduanya terhubung
+ke kandidat yang sama; kandidat, posisi, riwayat jabatan, kompetensi teknis, HAV, MCU, kamus, dan Job
+Profile masuk ke Company itu; **46/46 kandidat sesuai hasil yang dirancang** di `ringkasan-data-demo.md`;
+halaman Kandidat, detail kandidat, dan Dokumen menampilkannya di Company tersebut dan tidak di Mulia;
+kandidat Company bawaan tidak berubah. Tanpa `--keep` semuanya dibersihkan lagi.
+
+Uji yang lebih awal (sebelum set terisi) dijalankan melalui **sync-service asli** pada PostgreSQL yang
+dibangun dari semua migrasi `drizzle/`:
 
 - Header dan nama sheet tiap workbook dibandingkan dengan spesifikasi `excel-sources.ts` — semua sama persis.
 - Berkas dengan sel kuning kosong ditolak dengan pesan yang jelas dan tidak menulis apa pun (kecuali Data

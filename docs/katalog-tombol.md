@@ -708,7 +708,7 @@ Di tab Profil Spesifik, suntingan pertama membuat template khusus profil itu seb
 - Navigasi hanya muncul bila hasil lebih dari satu halaman.
 - Panah nonaktif di halaman pertama/terakhir.
 
-## Kamus Kompetensi (/job-profiles/kamus — URL lama /kamus-kompetensi dialihkan) · Scoring Baru (/scoring/new) · Pengaturan Sinkronisasi (/settings/sync) · Keamanan & Enkripsi (/settings/security)
+## Kamus Kompetensi (/job-profiles/kamus — URL lama /kamus-kompetensi dialihkan) · Scoring Baru (/scoring/new) · Pengaturan Sinkronisasi (/settings/sync)
 
 ### Tombol "Kartu kompetensi (mis. "TC 003 — ASSET QUALITY MANAGEMENT")"
 
@@ -842,8 +842,7 @@ Halaman Scoring Baru tidak lagi punya pilihan metode. Metode AI Tournament (LLM)
 **Kapan nonaktif / gagal:**
 
 - Gagal bila server, nama database, atau username kosong, atau port di luar 1–65535.
-- Bila enkripsi sudah diinisialisasi tetapi sedang terkunci, penyimpanan password DITOLAK dengan arahan membuka kunci di Pengaturan → Keamanan; kolom lain tetap dapat disimpan.
-- Bila enkripsi belum pernah diaktifkan, password tersimpan TANPA enkripsi dan hal itu diberitahukan pada pesan sukses.
+- Password tersimpan tanpa enkripsi di database aplikasi; siapa pun yang punya akses baca ke database itu dapat membacanya.
 - Bila layanan sinkronisasi tidak dapat dihubungi, setelan tetap tersimpan tetapi baru berlaku saat layanan berikutnya start.
 
 ### Tombol "Test Koneksi"
@@ -897,7 +896,7 @@ Halaman Scoring Baru tidak lagi punya pilihan metode. Metode AI Tournament (LLM)
 **Kapan nonaktif / gagal:**
 
 - Nonaktif ketika layanan sinkronisasi offline atau modul yang sama sedang berjalan.
-- Gagal bila koneksi database sumber salah, atau bila password tersimpan tidak terbaca karena enkripsi terkunci (layanan diam-diam memakai password dari konfigurasi server).
+- Gagal bila koneksi database sumber salah.
 - "Struktur Org" tidak menarik dari mana pun bila data karyawan belum tersinkron.
 
 ### Tombol "Kedisiplinan / Pendidikan" — ⚠ BERDAMPAK LUAS
@@ -1180,91 +1179,6 @@ Halaman Scoring Baru tidak lagi punya pilihan metode. Metode AI Tournament (LLM)
 **Kapan nonaktif / gagal:**
 
 - Nonaktif selama proses penyimpanan atau pemuatan berlangsung.
-
-### Tombol "Inisialisasi Enkripsi → Buat Kunci Master" — ⚠ BERDAMPAK LUAS
-
-**Yang dikerjakan.** Halaman Keamanan. Setelah dialog peringatan dan centang persetujuan, membuat satu kunci master baru dan satu kunci data, menuliskan kunci master ke berkas kunci di server, menyimpan kunci data dalam bentuk terbungkus di database, langsung membuka kunci, mengirimkan kunci ke layanan pendamping, dan MENAMPILKAN kunci master satu kali saja.
-
-**Dampak.** MENULIS berkas kunci di server, satu baris kunci enkripsi aktif di database, dan satu catatan audit (tanpa isi kunci). Berdampak GLOBAL untuk seluruh instalasi dan semua unit bisnis: sejak saat itu password sumber data disimpan terenkripsi. Tidak dapat dibatalkan — dan bila layar kunci ditutup tanpa menyimpan salinannya sementara berkas kunci di server hilang, data terenkripsi tidak dapat dipulihkan oleh siapa pun.
-
-**Izin.** governance.manage
-
-**Kapan nonaktif / gagal:**
-
-- Hanya muncul saat status "Belum diinisialisasi".
-- Ditolak bila sudah pernah diinisialisasi (gunakan rotasi).
-- Ditolak bila kunci berasal dari variabel lingkungan PULSE_MASTER_KEY, karena UI tidak dapat menulis variabel itu.
-- Tombol di dialog baru aktif setelah kotak "Saya mengerti kunci ini tidak dapat ditampilkan ulang" dicentang.
-- Berkas kunci lama yang tersisa dari percobaan gagal dicadangkan lebih dahulu, bukan ditimpa.
-
-### Tombol "Salin kunci / Saya sudah menyimpan kunci ini" — ⚠ BERDAMPAK LUAS
-
-**Yang dikerjakan.** Halaman Keamanan, dialog penampilan kunci sekali pakai. Menyalin kunci ke papan klip, lalu menutup dialog.
-
-**Dampak.** Tidak menulis apa pun ke aplikasi. Menutup dialog menghapus satu-satunya tampilan kunci — sesudah itu kunci tidak bisa ditampilkan lagi. Isi kunci tidak pernah dimasukkan ke notifikasi maupun log.
-
-**Izin.** governance.manage
-
-**Kapan nonaktif / gagal:**
-
-- Dialog sengaja tidak bisa ditutup dengan Esc atau klik di luar.
-- Bila penyalinan otomatis gagal, blok kunci tetap dapat diseleksi manual.
-
-### Tombol "Buka Kunci" — ⚠ BERDAMPAK LUAS
-
-**Yang dikerjakan.** Halaman Keamanan. Memeriksa kunci master yang ditempel, dan bila benar: membuat aplikasi memegang kunci data, mengirim kunci itu ke layanan pendamping, dan — bila berkas kunci di server hilang — menuliskan ulang berkas kunci tersebut.
-
-**Dampak.** MENGUBAH keadaan aplikasi menjadi terbuka (nilai terenkripsi kembali terbaca, password baru bisa disimpan), berpotensi MENULIS ulang berkas kunci di server, dan menulis satu catatan audit. Berdampak GLOBAL lintas unit bisnis dan lintas layanan. Dapat dibalik dengan tombol Kunci.
-
-**Izin.** governance.manage
-
-**Kapan nonaktif / gagal:**
-
-- Hanya muncul saat status "Terkunci".
-- Kunci salah ditolak dengan pesan di bawah kolom, bukan sekadar notifikasi sekilas.
-- Bila layanan pendamping menolak/tidak dapat dihubungi, muncul daftar peringatan — layanan itu akan memakai konfigurasi server sebagai cadangan sampai dikirimi kunci lagi.
-- Bila berkas kunci gagal ditulis, aplikasi akan terkunci lagi setelah restart dan hal itu diberitahukan.
-
-### Tombol "Kunci" — ⚠ BERDAMPAK LUAS
-
-**Yang dikerjakan.** Halaman Keamanan. Melepas kunci data dari memori aplikasi dan menyuruh layanan pendamping melakukan hal yang sama.
-
-**Dampak.** MENGUBAH keadaan menjadi terkunci untuk seluruh instalasi: nilai terenkripsi tidak terbaca dan penyimpanan password sumber data ditolak sampai kunci dibuka lagi. Layanan sinkronisasi akan jatuh ke password dari konfigurasi server, sehingga penarikan data bisa memakai kredensial yang berbeda dari yang tersimpan. Menulis satu catatan audit. Dapat dibalik dengan Buka Kunci — asalkan salinan kunci masih ada atau berkas kunci di server masih utuh.
-
-**Izin.** governance.manage
-
-**Kapan nonaktif / gagal:**
-
-- Hanya muncul saat status "Terbuka".
-- Tidak menghapus berkas kunci; setelah aplikasi restart, kunci bisa terbaca sendiri kembali dari berkas.
-
-### Tombol "Rotasi Kunci" — ⚠ BERDAMPAK LUAS
-
-**Yang dikerjakan.** Halaman Keamanan. Membuktikan dahulu bahwa kunci lama (dari berkas kunci, atau dari kolom bila diisi) benar-benar membuka baris kunci aktif, lalu membuat kunci master baru, membungkus ulang kunci data dengannya, menonaktifkan baris kunci lama, menulis kunci baru ke berkas kunci (kunci lama dicadangkan), dan menampilkan kunci baru sekali saja.
-
-**Dampak.** MENULIS satu baris kunci aktif baru, menonaktifkan yang lama, menimpa berkas kunci di server (dengan cadangan di sebelahnya), dan menulis catatan audit. TIDAK ada satu pun nilai yang dienkripsi ulang, sehingga layanan yang sudah memegang kunci tetap berjalan tanpa perlu dibuka ulang. Berdampak GLOBAL. Kunci lama langsung tidak berlaku dan tidak dapat dikembalikan dari layar ini.
-
-**Izin.** governance.manage
-
-**Kapan nonaktif / gagal:**
-
-- Hanya tersedia bila enkripsi sudah diinisialisasi.
-- Ditolak bila kunci berasal dari variabel lingkungan PULSE_MASTER_KEY.
-- Ditolak bila berkas kunci tidak ada dan kolom kunci lama dibiarkan kosong.
-- Bila penulisan berkas kunci baru gagal, rotasi dibatalkan seluruhnya dan kunci lama tetap berlaku — tidak ada data yang terpengaruh.
-
-### Tombol "Periksa ulang"
-
-**Yang dikerjakan.** Halaman Keamanan. Membaca ulang status kunci (termasuk mencoba membuka sendiri dari berkas kunci) dan menanyakan status layanan pendamping.
-
-**Dampak.** Bisa mengubah status dari "Terkunci" menjadi "Terbuka" jika berkas kunci ada dan operator tidak sedang mengunci secara manual — selain itu tidak ada penulisan data.
-
-**Izin.** governance.manage
-
-**Kapan nonaktif / gagal:**
-
-- Nonaktif selama ada aksi kunci lain berjalan.
-- Tidak akan membuka sendiri bila sebelumnya ditekan tombol Kunci — pembukaan otomatis ditahan sampai dibuka manual.
 
 ## Peta Job Family (menu Posisi → seksi Job Family), rute /posisi/job-family (URL lama /family-tree dan /job-profiles/job-family dialihkan)
 

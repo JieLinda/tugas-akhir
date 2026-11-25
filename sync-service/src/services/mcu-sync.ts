@@ -6,6 +6,8 @@ import { config } from '../config.js';
 import { ensureNetworkShareAccess, assertPathAccessible } from './network-share.js';
 import { discardSummary, discardUploaded, uploadedWorkbook } from './upload-store.js';
 import type { SyncResult } from '../types.js';
+import { npkKey, npkKeySql } from './npk.js';
+import { unknownNpkWarning } from './npk-check.js';
 
 interface McuRow {
   NPK?: string;
@@ -118,9 +120,11 @@ export async function syncMcu(
     console.log(`[MCU] Fetched ${rows.length} rows from sheet: ${sheetName}`);
     
     // Normalize rows and extract MCU status
-    const normalized = rows
+    const parsed = rows
       .map((row) => {
-        const npk = (row.NPK || '').toString().trim();
+        // Stored and matched in ONE spelling (npk.ts): "5123" and "05123" are one
+        // person, as they are for HAV and everywhere that joins on LPAD(…, 5, '0').
+        const npk = npkKey((row.NPK || '').toString());
         const nama = (row.Nama || '').toString().trim();
         const kesimpulan = row.Kesimpulan;
         const status = normalizeMcuStatus(String(kesimpulan));
@@ -133,6 +137,9 @@ export async function syncMcu(
         return { npk, nama, status, kesimpulanRaw, keterangan };
       })
       .filter((r) => r.npk && r.status); // Only include rows with valid NPK and status
+    // One row per person: two spellings of one NPK would hit the same key twice
+    // in one INSERT, which Postgres refuses. Last row wins.
+    const normalized = Array.from(new Map(parsed.map((r) => [r.npk, r])).values());
 
     const BATCH = 500;
     let synced = 0;
@@ -150,6 +157,30 @@ export async function syncMcu(
       // Counted before/after so the run can SAY how many were carried over.
       const beforeRow = await client.query<{ n: string }>('SELECT count(*)::int AS n FROM sync_mcu');
       const before = Number(beforeRow.rows[0]?.n ?? 0);
+
+      // Rows stored under ANOTHER spelling of an NPK in this workbook ("5123"
+      // before normalisation) are the same person. They are RENAMED to the
+      // normalised NPK rather than deleted, so the upsert below merges into
+      // them and its COALESCE keeps a note a previous upload carried. When a
+      // person already has several rows, the one kept is the normalised row if
+      // present, else the newest. Counted before this, so the summary reads
+      // that person as updated, not added; nobody absent from the file is touched.
+      const keys = normalized.map((r) => r.npk);
+      await client.query(
+        `DELETE FROM sync_mcu WHERE id IN (
+           SELECT id FROM (
+             SELECT id, row_number() OVER (
+                      PARTITION BY ${npkKeySql('npk')}
+                      ORDER BY (npk = ${npkKeySql('npk')}) DESC, synced_at DESC NULLS LAST, id DESC) AS rn
+               FROM sync_mcu WHERE ${npkKeySql('npk')} = ANY($1::text[])
+           ) ranked WHERE rn > 1)`,
+        [keys],
+      );
+      await client.query(
+        `UPDATE sync_mcu SET npk = ${npkKeySql('npk')}
+          WHERE ${npkKeySql('npk')} = ANY($1::text[]) AND npk <> ${npkKeySql('npk')}`,
+        [keys],
+      );
 
       for (let i = 0; i < normalized.length; i += BATCH) {
         const batch = normalized.slice(i, i + BATCH);
@@ -201,15 +232,18 @@ export async function syncMcu(
     // they already replaced.
     const discarded = fromUpload ? discardUploaded([filePath]) : { removed: 0, failed: [] };
 
+    const unknown = await unknownNpkWarning(normalized.map((r) => r.npk), 'MCU');
     return {
       success: true,
+      ...(unknown ? { warnings: [unknown] } : {}),
       synced,
       total: normalized.length,
       message:
         `${synced} record MCU diproses (${added} baru, ${updated} diperbarui` +
         (preserved > 0 ? `, ${preserved} record lama dipertahankan` : '') +
         `)` +
-        discardSummary(discarded),
+        discardSummary(discarded) +
+        (unknown ? ` Peringatan: ${unknown}` : ''),
     };
   } catch (err) {
     console.error('[MCU] Sync failed:', err);

@@ -1,9 +1,9 @@
 import { Router, type Request, type Response } from "express";
 import express from "express";
 import { mkdir, rename, writeFile, unlink } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { extname, join, resolve, sep } from "node:path";
 import { read as xlsxRead } from "xlsx";
-import { UPLOAD_SUBDIR, uploadPath, uploadRoot } from "../services/upload-store.js";
+import { UPLOAD_SUBDIR, discardUploaded, uploadPath, uploadRoot } from "../services/upload-store.js";
 import { excelSpecByKey } from "../services/excel-sources.js";
 import { buildTemplateWorkbook, templateFileName } from "../services/excel-template.js";
 
@@ -21,11 +21,6 @@ export const uploadRouter = Router() as ReturnType<typeof Router>;
 
 const MAX_UPLOAD_BYTES = 40 * 1024 * 1024; // 40 MB
 
-/**
- * The four original kinds, which each have a bespoke sync reading a bespoke
- * layout. Everything else is driven by the declarative registry in
- * excel-sources.ts — see isExcelKind() below.
- */
 const LEGACY_KINDS = ["hav", "mcu", "kamus", "job-profiles"] as const;
 type LegacyKind = (typeof LEGACY_KINDS)[number];
 type UploadKind = LegacyKind | string;
@@ -176,6 +171,33 @@ uploadRouter.get("/template/:kind", (req: Request, res: Response) => {
     console.error(`[UPLOAD] template ${spec.key} failed:`, err);
     return res.status(500).json({ success: false, message: String(err) });
   }
+});
+
+/**
+ * Remove uploaded job-profile PDFs whose documents the web app has deleted
+ * (deleting a non-built-in company purges the documents assigned only to it).
+ *
+ * Needed because uploaded job profiles are KEPT on disk (job-profile-sync.ts:
+ * the PDF is the only copy of the document), and every full sync rescans the
+ * upload folder — a document deleted only from Postgres would be re-ingested on
+ * Monday, unassigned and so visible to every company.
+ *
+ * Only files inside the upload store are ever touched: discardUploaded refuses
+ * any path outside it, so a document that came from the shared folder is left
+ * alone (that folder is not the app's to delete from). Declared before "/:kind"
+ * so the name is not read as an upload kind.
+ */
+uploadRouter.post("/_purge-job-profiles", async (req: Request, res: Response) => {
+  const paths = Array.isArray(req.body?.paths) ? (req.body.paths as unknown[]).filter((p): p is string => typeof p === "string") : [];
+  if (paths.length === 0) return res.json({ success: true, removed: 0, failed: [], skipped: 0 });
+  const root = uploadRoot();
+  const inStore = paths.filter((p) => resolve(p).startsWith(root + sep));
+  const result = discardUploaded(inStore);
+  for (const p of inStore) {
+    // A tenant sidecar left beside the PDF would re-assign a re-uploaded copy.
+    await unlink(`${p}.tenants.json`).catch(() => {});
+  }
+  return res.json({ success: result.failed.length === 0, removed: result.removed, failed: result.failed, skipped: paths.length - inStore.length });
 });
 
 uploadRouter.post(

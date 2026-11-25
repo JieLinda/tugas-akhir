@@ -91,11 +91,6 @@ export const config = {
     process.env.VECTOR_POSTGRES_URL ||
     process.env.POSTGRES_URL ||
     "postgresql://postgres:postgres@localhost:5433/pulse_vectors",
-  // Master-key file for unwrapping the candidate-encryption DEK. Same contract
-  // as the web app's PULSE_MASTER_KEY_FILE — default secrets/master.key, which
-  // Docker mounts ro into this container.
-  masterKeyFile: process.env.PULSE_MASTER_KEY_FILE || "secrets/master.key",
-  masterKeyInline: process.env.PULSE_MASTER_KEY || "",
   llm: {
     baseUrl: process.env.LLM_BASE_URL || "http://localhost:8001/v1",
     apiKey: process.env.LLM_API_KEY || "not-needed",

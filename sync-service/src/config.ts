@@ -7,6 +7,13 @@ import { dirname, resolve } from "node:path";
 // process.cwd(), so launching from anywhere but sync-service/ found no env.
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 
+const SOURCE_SYNC_ENABLED = (process.env.SOURCE_SYNC_ENABLED ?? "true").trim().toLowerCase() !== "false";
+
+/** Shown wherever a source sync is refused because SOURCE_SYNC_ENABLED=false. */
+export const SOURCE_SYNC_OFF_MESSAGE =
+  "Sinkronisasi dari sumber (MSSQL / API HR / folder bersama) dinonaktifkan di layanan ini (SOURCE_SYNC_ENABLED=false). " +
+  "Unggah berkas tetap berjalan dan langsung diteruskan ke Company.";
+
 export const config = {
   // DB MPMDS – Employee / Division / Department
   dbMPMDS: {
@@ -68,20 +75,24 @@ export const config = {
     0,
     parseInt(process.env.JOB_PROFILE_EXTRACT_BACKOFF_MS || "4000", 10) || 4000,
   ),
+  /**
+   * SOURCE_SYNC_ENABLED=false — no source system is ever contacted: MSSQL
+   * (connect + test), the HR REST API (token), and the shared network folders
+   * (treated as unset, so readers use the upload store only). The weekly cron is
+   * not registered and the source sync routes answer with SOURCE_SYNC_OFF_MESSAGE.
+   * Uploads and everything derived from them (candidates, positions, HAV, MCU,
+   * kamus, job profiles) keep working. For running away from the company
+   * network, e.g. a demo. Default: enabled.
+   */
+  sourceSyncEnabled: SOURCE_SYNC_ENABLED,
   // Local PDF storage (shared folder)
-  localPdfFolder: process.env.LOCAL_PDF_FOLDER || "",
+  localPdfFolder: SOURCE_SYNC_ENABLED ? process.env.LOCAL_PDF_FOLDER || "" : "",
   localPdfUsername: process.env.LOCAL_PDF_USERNAME || "",
   localPdfPassword: process.env.LOCAL_PDF_PASSWORD || "",
   localPdfDomain: process.env.LOCAL_PDF_DOMAIN || "",
   // Excel files for HAV and MCU
-  localHavFolder: process.env.LOCAL_HAV_FOLDER || "",
-  localMcuFolder: process.env.LOCAL_MCU_FOLDER || "",
-  // Master encryption key. Read from this file (written and rotated by the web
-  // app's Keamanan page), or from PULSE_MASTER_KEY when secrets arrive as env
-  // vars. Reading it here is what lets the Monday cron write encrypted columns
-  // without a human unlocking anything first.
-  masterKeyFile: process.env.PULSE_MASTER_KEY_FILE || "secrets/master.key",
-  masterKeyInline: process.env.PULSE_MASTER_KEY || "",
+  localHavFolder: SOURCE_SYNC_ENABLED ? process.env.LOCAL_HAV_FOLDER || "" : "",
+  localMcuFolder: SOURCE_SYNC_ENABLED ? process.env.LOCAL_MCU_FOLDER || "" : "",
   // Local store for files uploaded through the UI. Deliberately a plain local
   // directory, NOT a network share: uploading is the escape hatch for when the
   // shared folder is unreachable or unconfigured, so it must never depend on it.

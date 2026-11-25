@@ -75,12 +75,16 @@ export type PositionBasis = {
     /** Plain text when it comes from the job profile or the position. */
     requirement: string | null;
     /**
-     * When the requirement is the INCUMBENT's own education + major, it is a
-     * person's data and those columns are encrypted at rest, so it is stored
-     * sealed with the same envelope (`v1:…`), never as plain text.
+     * When the requirement is the INCUMBENT's own education + major, it is
+     * stored here (plain text) rather than in `requirement`. The name is
+     * historical — it used to hold a `v1:` envelope; application-level
+     * encryption was removed and stored values were decrypted in place.
      */
     requirementSealed: string | null;
-    /** False when an incumbent requirement could not be sealed (key locked). */
+    /**
+     * False only on older runs whose incumbent requirement could not be
+     * sealed (key locked) and was therefore not stored. New runs write true.
+     */
     recorded: boolean;
   };
   /** Null when this run resolved no career target (nobody to score). */
@@ -199,7 +203,8 @@ export type BasisCaveat = {
  *  - the embedding model changed: cosines across two models are meaningless;
  *  - the stored career vector no longer has the corpus' dimensionality: it
  *    cannot be compared at all, so career resolves its target live;
- *  - an incumbent-derived education requirement could not be sealed.
+ *  - an incumbent-derived education requirement was not recorded (older runs
+ *    made while the encryption key was locked).
  */
 export function basisCaveats(input: {
   basis: PositionBasis;

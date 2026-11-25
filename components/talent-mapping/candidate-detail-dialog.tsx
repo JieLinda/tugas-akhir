@@ -72,8 +72,6 @@ export function AuditMoveLine({ entry, masked }: { entry: TalentMappingAuditEntr
       </div>
       {masked ? (
         <Mask w={10} />
-      ) : entry.unreadable ? (
-        <p className="text-muted-foreground">Isi entri terkunci — kunci enkripsi tidak cocok.</p>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-1.5">

@@ -69,6 +69,8 @@ async function runNetUse(args: string[]): Promise<string> {
 export async function ensureNetworkShareAccess(
   folderPath: string,
 ): Promise<() => Promise<void>> {
+  // No `net use` against a share while source syncs are off (config blanks the folders too).
+  if (!config.sourceSyncEnabled) return async () => {};
   if (!isWindows) {
     return async () => {};
   }

@@ -23,7 +23,12 @@
 //
 // Pure: lib/run-compare-data.ts does the reads.
 
-import { rankCandidatesByTopsis } from '../scoring-service/src/topsis-ranking';
+import {
+  rankCandidatesByTopsis,
+  leftTopNCauseOf,
+  type LeftTopNCause,
+  type TopsisAnchorsByKey,
+} from '../scoring-service/src/topsis-ranking';
 import { AHP_CRITERIA_ORDER, type AhpCriterionKey } from '../scoring-service/src/ahp-criteria';
 import type { RunModelsRecord } from './rerun-modes';
 import { fmtNumber, fmtWeight } from './run-compare-format';
@@ -151,6 +156,19 @@ export type RunConfigView = {
     jobProfileCorpus: { fingerprint: string | null; documents: number };
     kamus: { fingerprint: string | null; codes: number | null };
   } | null;
+  /**
+   * The TOPSIS yardstick (`run_info.frozen.topsis`). `classic`: divisors and
+   * ideals from the run's own pool (every root, and children from before the
+   * parent's yardstick was frozen). `anchored`: a "Tambah Kandidat Pembanding"
+   * child ranked on its parent's — replaying it needs these exact anchors.
+   * `recorded: false` = the run predates the record (classic by construction).
+   */
+  topsis: {
+    mode: 'classic' | 'anchored';
+    source: 'own' | 'parent' | 'parent_pool' | null;
+    recorded: boolean;
+    anchors: TopsisAnchorsByKey | null;
+  };
 };
 
 export type RunCandidate = {
@@ -250,12 +268,14 @@ const byId = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
  * Rank a pool exactly as the engine did: candidates in id order, the run's own
- * nominal weights and active criteria, scoring-service's `rankCandidatesByTopsis`.
+ * nominal weights and active criteria, scoring-service's `rankCandidatesByTopsis`
+ * — on the run's frozen yardstick when it was ranked anchored (a child).
  */
 export function rankPool(
   pool: { candidateId: string; aspects: Record<CriterionKey, number> }[],
   weights: Record<CriterionKey, number>,
   activeCriteria: CriterionKey[],
+  anchors?: TopsisAnchorsByKey | null,
 ): Replay {
   const ids = pool.map((p) => p.candidateId).sort(byId);
   const aspects = new Map(pool.map((p) => [p.candidateId, p.aspects]));
@@ -265,6 +285,7 @@ export function rankPool(
     aspects,
     weights,
     dropped,
+    anchors ?? null,
   );
   const byIdMap = new Map<string, { closeness: number; dPlus: number; dMinus: number; rank: number }>();
   r.rankedAll.forEach((e, i) =>
@@ -326,7 +347,15 @@ export function replayRun(run: RunRecord): Replay | ReplayUnavailable {
   const active =
     run.config.activeCriteria ??
     CRITERIA.filter((k) => !run.config.droppedCriteria.some((d) => d.key === k));
-  return rankPool(run.pool, run.config.weights, active);
+  if (run.config.topsis.mode === 'anchored' && !run.config.topsis.anchors) {
+    return { available: false, reason: 'Run ini diperingkat dengan skala TOPSIS run induknya, tetapi skala itu tidak tersimpan lengkap.' };
+  }
+  return rankPool(
+    run.pool,
+    run.config.weights,
+    active,
+    run.config.topsis.mode === 'anchored' ? run.config.topsis.anchors : null,
+  );
 }
 
 export type ReproducibilityResult =
@@ -503,6 +532,12 @@ export type RankingRow = {
   finalistA: boolean | null;
   finalistB: boolean | null;
   finalistChange: 'masuk' | 'keluar' | 'tetap' | 'tidak' | null;
+  /**
+   * On a 'keluar' row: overtaken by candidates A never ranked, or pushed down
+   * because the pool's scale moved (somebody A ranked lower is now higher).
+   * Null when not decidable — weights, criteria or aspects also differ.
+   */
+  leftCause: LeftTopNCause | null;
   readinessA: string | null;
   readinessB: string | null;
   decisionA: string | null;
@@ -794,6 +829,7 @@ export function compareRuns(a: RunRecord, b: RunRecord): Comparison {
         provisionalB: Boolean(cb?.provisional),
       },
       aspectsChanged: aspectChanges.find((c) => c.id === id)?.keys ?? [],
+      leftCause: null,
     };
   });
   ranking.sort((x, y) => {
@@ -802,6 +838,20 @@ export function compareRuns(a: RunRecord, b: RunRecord): Comparison {
     if (rx !== ry) return rx - ry;
     return (x.rankA ?? Number.POSITIVE_INFINITY) - (y.rankA ?? Number.POSITIVE_INFINITY);
   });
+  // Why a finalist of A is not one in B — decidable only when nothing but the
+  // pool moved (same weights, criteria and aspects; S2 and S3 equal): either
+  // every candidate newly above them is one A never ranked (overtaken), or
+  // somebody A ranked BELOW them is now above them (the pool's scale moved —
+  // classic TOPSIS rank reversal). See leftTopNCauseOf (scoring-service).
+  if (!weightsDiffer && !activeDiffer && aspectChanges.length === 0) {
+    const rankAById = new Map(a.pool.map((c) => [c.candidateId, c.storedRank]));
+    const orderB = [...b.pool].sort((x, y) => x.storedRank - y.storedRank).map((c) => c.candidateId);
+    for (const row of ranking) {
+      if (row.finalistChange !== 'keluar' || row.rankB == null) continue;
+      const above = orderB.slice(0, orderB.indexOf(row.candidateId));
+      row.leftCause = leftTopNCauseOf(row.candidateId, above, rankAById);
+    }
+  }
 
   // ── Criteria (FR-CMP-07) ──
   const criteria: CriterionRow[] = CRITERIA.map((key) => {
@@ -933,6 +983,28 @@ function configDiff(
     originA: ca.weightsOrigin,
     originB: cb.weightsOrigin,
     same: ca.weights != null && cb.weights != null ? sameWeights(ca.weights, cb.weights) : ca.weightSource === cb.weightSource,
+  });
+  // Where the TOPSIS divisors and ideals came from. A "Tambah Kandidat
+  // Pembanding" child ranks on its parent's (so the carried order cannot move);
+  // every other run derives them from its own pool. Runs from before this was
+  // recorded are classic by construction — no other mode existed.
+  const scaleText = (r: RunRecord) =>
+    r.config.topsis.mode === 'anchored'
+      ? r.config.topsis.source === 'parent_pool'
+        ? 'Skala run induk (diturunkan dari pool tersimpannya)'
+        : 'Skala run induk'
+      : 'Dihitung dari pool run ini';
+  const scaleOrigin = (r: RunRecord): Origin =>
+    r.config.topsis.mode === 'anchored' ? 'frozen_parent' : r.parentRunId ? 'live' : 'root_snapshot';
+  push({
+    key: 'topsis.scale',
+    group: 'Pembobotan',
+    label: 'Skala TOPSIS (pembagi dan titik ideal)',
+    a: scaleText(a),
+    b: scaleText(b),
+    delta: null,
+    originA: scaleOrigin(a),
+    originB: scaleOrigin(b),
   });
   push({
     key: 'weight.cr',
@@ -1116,8 +1188,9 @@ export function attribute(a: RunRecord, b: RunRecord): AttributionStep[] | null 
     pool: { candidateId: string; aspects: Record<CriterionKey, number> }[],
     weights: Record<CriterionKey, number>,
     active: CriterionKey[],
+    anchors: TopsisAnchorsByKey | null,
   ): AttributionStep => {
-    const r = rankPool(pool, weights, active);
+    const r = rankPool(pool, weights, active, anchors);
     const byIdMap = new Map<string, { closeness: number; rank: number }>();
     for (const [id, v] of r.byId) byIdMap.set(id, { closeness: v.closeness, rank: v.rank });
     return { key, label, byId: byIdMap };
@@ -1127,12 +1200,24 @@ export function attribute(a: RunRecord, b: RunRecord): AttributionStep[] | null 
     candidateId: c.candidateId,
     aspects: poolB.get(c.candidateId)?.aspects ?? c.aspects,
   }));
-  const bPool = b.pool.map((c) => ({ candidateId: c.candidateId, aspects: c.aspects }));
+  // A's yardstick carries into the intermediate steps only while it still
+  // describes them — same weight vector and criteria; otherwise those steps rank
+  // classically. The last step is B's own replay (on B's yardstick when B was
+  // ranked anchored), so it equals B by construction.
+  const aAnchors = a.config.topsis.mode === 'anchored' ? a.config.topsis.anchors : null;
+  const sameScale =
+    sameWeights(a.config.weights, b.config.weights) && sameList(ra.activeCriteria, rb.activeCriteria);
+  const midAnchors = aAnchors && sameScale ? aAnchors : null;
+  const bStep: AttributionStep = {
+    key: 'pool',
+    label: 'Keanggotaan pool B',
+    byId: new Map([...rb.byId].map(([id, v]) => [id, { closeness: v.closeness, rank: v.rank }])),
+  };
   return [
-    stepOf('A', 'A (dari data tersimpan)', aPool, a.config.weights, ra.activeCriteria),
-    stepOf('weights', 'Bobot dan kriteria aktif B', aPool, b.config.weights, rb.activeCriteria),
-    stepOf('aspects', 'Nilai aspek B (kandidat yang ada di keduanya)', aPoolWithB, b.config.weights, rb.activeCriteria),
-    stepOf('pool', 'Keanggotaan pool B', bPool, b.config.weights, rb.activeCriteria),
+    stepOf('A', 'A (dari data tersimpan)', aPool, a.config.weights, ra.activeCriteria, aAnchors),
+    stepOf('weights', 'Bobot dan kriteria aktif B', aPool, b.config.weights, rb.activeCriteria, midAnchors),
+    stepOf('aspects', 'Nilai aspek B (kandidat yang ada di keduanya)', aPoolWithB, b.config.weights, rb.activeCriteria, midAnchors),
+    bStep,
   ];
 }
 

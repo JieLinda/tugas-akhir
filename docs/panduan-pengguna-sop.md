@@ -4,8 +4,9 @@ Platform perencanaan suksesi talenta MPM Motor
 
 | | |
 |---|---|
-| Versi dokumen | 1.6 |
-| Tanggal | 17 November 2026 (versi 1.5 dan 1.4: 5 November 2026; versi 1.3: 30 Oktober 2026; versi 1.2 dan 1.1: 29 Oktober 2026; versi 1.0: 30 September 2026) |
+| Versi dokumen | 1.7 |
+| Tanggal | 25 November 2026 (versi 1.6: 17 November 2026; versi 1.5 dan 1.4: 5 November 2026; versi 1.3: 30 Oktober 2026; versi 1.2 dan 1.1: 29 Oktober 2026; versi 1.0: 30 September 2026) |
+| Perubahan versi 1.7 | 25 November 2026: enkripsi data di tingkat aplikasi dihapus. Menu Keamanan (/settings/security) beserta kunci master, Buka Kunci, Kunci, dan Rotasi hilang dari aplikasi; alamat lamanya kini membuka Sinkronisasi. Seksi 6.11 dan baris kunci master di 8.1 ikut dihapus. Data tersimpan tanpa enkripsi di database, sehingga perlindungannya bergantung pada pembatasan akses ke database. |
 | Perubahan versi 1.6 | 17 November 2026: metode AI Tournament (LLM) dihapus dari aplikasi; AHP + TOPSIS menjadi satu-satunya metode penilaian, dan kartu "Metode Scoring" di wizard hilang. Ikut dihapus dari Tata Kelola: editor kriteria, AI System Prompt program beserta riwayat versinya, Konteks Bisnis, dan seksi Umpan Balik AI, beserta izin "Umpan balik scoring" (izin kini sebelas). Run AI Tournament yang tersimpan dihapus dari basis data; suksesor yang dipilih dari run itu tetap ada. |
 | Perubahan versi 1.5 | 5 November 2026: fitur Simulasi penempatan dihapus dari aplikasi, beserta bilah "Simulasi penempatan", tombol "Simulasikan semua (N)" dan "Simulasikan ulang (N)", baris peringkat yang dapat diklik untuk membuat simulasi, dan kartu catatannya. Langkah 4 lama di SOP modul Penilaian ikut dihapus sehingga Langkah 5–7 menjadi Langkah 4–6. Peringkat, skor, dan readiness tidak berubah |
 | Perubahan versi 1.4 | 5 November 2026: fitur Keyakinan Penempatan (MCU) dihapus dari aplikasi, beserta lencana, dialog, tombol, dan panel pengaturannya. Status MCU, aturan filter MCU yang hanya menandai, dan "Keterangan MCU" kandidat tetap ada |
@@ -171,7 +172,6 @@ Dua pintasan di atas menu berkelompok:
 | Tata Kelola | /governance | governance.manage |
 | Sinkronisasi | /settings/sync | sync.manage |
 | Pengguna & Akses | /settings/users | users.manage |
-| Keamanan | /settings/security | governance.manage |
 
 Peran HR / Talent melihat dua kelompok pertama secara utuh dan tidak melihat
 kelompok Administrasi sama sekali.
@@ -424,18 +424,31 @@ adanya. Yang dibekukan:
 - tanggal acuan penilaian (usia penugasan diukur sampai tanggal ini);
 - basis posisi: job profile, acuan kompetensi, syarat pendidikan, dan dokumen
   target karier yang dipakai run induk;
-- ambang kesiapan dan jumlah finalis.
+- ambang kesiapan dan jumlah finalis;
+- skala TOPSIS: pembagi kolom dan titik ideal run induk;
+- tanda "Ditandai dikecualikan" pada run induk (berlabel "diwarisi";
+  membatalkannya di run turunan tidak mengubah run induk).
 
 Yang dihitung baru hanyalah keenam aspek kandidat yang belum ada di pool
-induk, dan dihitung terhadap basis posisi induk. Karena itu, setiap pergeseran
-peringkat pasti berasal dari bertambahnya himpunan kandidat. Bila induknya run
-lama yang tidak menyimpan sebagian butir itu, nilai hari ini dipakai dan
-disebut terang-terangan di banner run turunan dan di tab "Komparasi Versi".
+induk, dan dihitung terhadap basis posisi induk. Karena skala TOPSIS induk
+juga dibekukan, kecocokan dan urutan kandidat lama sama persis dengan run
+induk: kandidat pembanding hanya disisipkan di antara mereka, dan peringkat
+kandidat lama hanya turun sebanyak kandidat pembanding yang masuk di atasnya.
+Bila nilai kandidat pembanding pada suatu kriteria berada di luar rentang run
+induk, nilainya dihitung pada ujung rentang itu: di atas nilai terbaik
+dihitung setara nilai terbaik, di bawah nilai terendah dihitung setara nilai
+terendah. Barisnya diberi penanda "Di luar skala induk", dan tooltip-nya
+menyebut kriteria serta arahnya. Bila induknya run lama yang tidak menyimpan
+sebagian butir itu, nilai hari ini dipakai dan disebut terang-terangan di
+banner run turunan dan di tab "Komparasi Versi".
 
 Hasil run turunan memuat N besar menurut peringkat baru (N sama dengan jumlah
 finalis induk), seluruh finalis induk, dan seluruh kandidat pembanding, dengan
 peringkat pool penuh masing-masing. Penanda "Kandidat pembanding", "Baru masuk
-N besar", dan "Keluar dari N besar" menunjukkan siapa yang bergeser. Banner di
+N besar", dan "Keluar dari N besar" menunjukkan siapa yang bergeser. Penanda
+keluar menyebut penyebabnya: "disalip kandidat pembanding", atau — hanya pada
+run turunan lama yang menghitung ulang TOPSIS atas gabungannya — "bergeser
+karena pool berubah". Banner di
 atas daftar menyebut induknya, alasan forum, kandidat yang ditolak beserta
 alasannya, dan tautan "Lihat perbandingan dengan induk". Panel "Selisih
 Peringkat" menunjukkan pergeserannya terhadap induk langsung atau terhadap
@@ -830,28 +843,6 @@ Semuanya dikelola di dalam aplikasi ini. Keycloak hanya untuk login.
 Peran Administrator selalu mempertahankan izin mengelola pengguna dan peran;
 antarmuka tidak dapat mencabutnya.
 
-### 6.11 Keamanan & Enkripsi
-
-Izin: governance.manage.
-
-- Menginisialisasi enkripsi dan membuat kunci master.
-- Membuka kunci dengan menempelkan kunci master.
-- Mengunci kembali.
-- Merotasi kunci master, dan memulihkan kunci sebelumnya.
-- Memeriksa ulang status: Belum diinisialisasi, Terkunci, atau Terbuka.
-
-Kunci ditampilkan satu kali saja dan tidak dapat dibuat ulang oleh siapa pun,
-termasuk administrator. Menutup layar itu tanpa menyimpan kuncinya berarti
-seluruh data yang dienkripsi dengan kunci tersebut hilang selamanya.
-
-Rotasi hanya membungkus ulang kunci data dengan kunci master baru, sehingga
-tidak ada yang dienkripsi ulang dan layanan yang sudah terbuka tetap terbuka.
-
-Kunci master disimpan dalam berkas di server, bukan di database. Konsekuensinya
-jelas dan disebutkan di halaman: pihak yang hanya punya akses database tidak
-dapat membaca data terenkripsi, sedangkan pihak yang punya akses berkas server
-bisa.
-
 ## 7. SOP klik-per-klik: modul Penilaian
 
 Modul ini dipilih untuk diuraikan terperinci karena merupakan alur inti
@@ -1030,8 +1021,14 @@ tetap membuka "Komparasi Versi".
 3. Klik "Tandai dikecualikan". Baris kandidat dicoret, diberi label "Ditandai
    dikecualikan (tidak memengaruhi angka)", dan dilewati oleh hitungan kandidat
    siap. Skor dan peringkat run tidak berubah, dan tidak ada run baru yang
-   dibuat.
+   dibuat. Tidak ada kandidat yang otomatis naik menggantikannya; untuk
+   memunculkan kandidat berikutnya (peringkat N+1 run ini), tambahkan ia lewat
+   "Tambah Kandidat Pembanding" — karena ia sudah ada di pool, ia tidak dinilai
+   ulang dan urutan run tidak berubah.
 4. Untuk membatalkannya, klik "Batalkan tanda" dan tulis alasan pembatalan.
+5. Tanda ini ikut ke setiap run "Tambah Kandidat Pembanding" yang dibuat dari
+   run ini sesudahnya, berlabel "diwarisi". Membatalkannya di run turunan tidak
+   mengubah run ini. Hanya kandidat yang ada di run ini yang dapat ditandai.
 
 #### Menambah kandidat pembanding
 
@@ -1129,8 +1126,7 @@ Word, atau Excel. Jawaban yang sedang ditulis belum termasuk; tunggu sampai
 selesai.
 
 Berkas hasil ekspor memuat prosa tentang orang bernama dan berada di luar
-kendali aplikasi. Dokumen itu mencantumkan run asalnya, dan menandai pesan
-yang tidak dapat dibuka agar tidak terbaca seolah-olah itu jawaban asisten.
+kendali aplikasi. Dokumen itu mencantumkan run asalnya.
 
 ### Pemecahan masalah yang sering ditemui
 
@@ -1160,12 +1156,10 @@ Peran Anda belum memuat izinnya. Hubungi administrator.
 
 | Tindakan | Akibat |
 |---|---|
-| Menutup layar kunci master tanpa menyalinnya | Seluruh data terenkripsi dengan kunci itu hilang selamanya. Tidak ada pemulihan, tidak ada cadangan. |
 | Menghapus baris job profile | Baris hasil ekstraksi hilang permanen. Berkas PDF-nya tidak ikut terhapus, jadi dokumen akan terbaca lagi sebagai entri baru pada sinkronisasi berikutnya. |
 | Membaca ulang job profile | Hasil ekstraksi yang sekarang diganti. |
 | Menghapus posisi | Tidak dapat dibatalkan. |
 | Menghapus program non-sistem | Tidak dapat dibatalkan. Run yang sudah selesai di bawahnya tetap tersimpan. |
-| Rotasi kunci master | Kunci lama langsung tidak berlaku begitu rotasi berhasil. |
 
 Mengosongkan data kandidat terlihat berbahaya tetapi **bukan** penghapusan
 permanen: riwayat penilaian tetap utuh dan kandidat kembali dengan identitas
@@ -1278,7 +1272,6 @@ Viewer ditandai sebagai bawaan tetapi tidak pernah diterapkan otomatis.
 | Tata Kelola | /governance | governance.manage | ya | tidak | tidak | tidak |
 | Sinkronisasi | /settings/sync | sync.manage | ya | tidak | tidak | tidak |
 | Pengguna & Akses | /settings/users | users.manage | ya | tidak | tidak | tidak |
-| Keamanan | /settings/security | governance.manage | ya | tidak | tidak | tidak |
 
 Peran HR / Talent melihat kelompok Alur Kerja dan Data Referensi secara utuh,
 dan tidak melihat kelompok Administrasi sama sekali.
@@ -1294,8 +1287,8 @@ Panduan ini melengkapi, bukan menggantikan, dokumen berikut.
 
 | Dokumen | Isi |
 |---|---|
-| docs/kebutuhan-fungsional.md | Daftar 291 kebutuhan fungsional yang dipenuhi sistem, dengan telusur ke komponen pelaksananya |
-| docs/panduan-fitur-halaman.md | Penjelasan tiap kartu dan angka pada Pengaturan Job Family, Katalog Job Profile, Tata Kelola, Kamus, Scoring Baru, Sinkronisasi, dan Keamanan |
+| docs/kebutuhan-fungsional.md | Daftar 282 kebutuhan fungsional yang dipenuhi sistem, dengan telusur ke komponen pelaksananya |
+| docs/panduan-fitur-halaman.md | Penjelasan tiap kartu dan angka pada Pengaturan Job Family, Katalog Job Profile, Tata Kelola, Kamus, Scoring Baru, dan Sinkronisasi |
 | docs/katalog-tombol.md | Katalog tombol beserta dampaknya, dengan penanda khusus untuk tombol berdampak luas |
 | docs/metodologi-laporan-scoring.md | Metodologi pelaporan hasil penilaian |
 | docs/rumus-kriteria-ahp-topsis.md | Rumus tiap kriteria AHP dan TOPSIS |

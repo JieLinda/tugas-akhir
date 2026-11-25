@@ -68,8 +68,9 @@ const BASE_CRITERIA: DefaultCriterion[] = [
 ];
 
 // Baseline eligibility filters mirroring the methodology document's business
-// rules: CLEAR/ST discipline qualified (active SP, SP<2yr, SP3, SP First/Last
-// rejected), not in HAV quadrant 16 (Bottom), and behavior above the bottom
+// rules: discipline CLEAR, ST and an SP1/SP2 that ended ≥ 2 years ago qualify
+// (SP1/SP2 active or ended < 2 years ago, SP3, SP First/Last rejected — the
+// order is in lib/discipline.ts), not in HAV quadrant 16 (Bottom), and behavior above the bottom
 // three categories. Performance Appraisal is gated per-program below (on the
 // latest grade), so there is no PA rule here.
 //
@@ -81,9 +82,11 @@ const COMMON_HARD_FILTERS: FilterRule[] = [
     // Sync writes uppercase canonical values; the filter engine compares with
     // strict equality, so these must match the stored casing.
     operator: 'in',
-    value: ['CLEAR', 'ST'],
+    // SP_OVER_2_YEARS keeps the old verdict: before drizzle/0101 an SP that
+    // ended ≥ 2 years ago was stored as CLEAR.
+    value: ['CLEAR', 'ST', 'SP_OVER_2_YEARS'],
     label: 'Disiplin',
-    message: 'Terdapat sanksi disiplin (SP aktif / SP < 2 tahun / SP3 / SP First-Last).',
+    message: 'Terdapat sanksi disiplin (SP1/SP2 aktif / SP1/SP2 berakhir < 2 tahun / SP3 / SP Pertama & Terakhir).',
   },
   {
     // ADVISORY, not hard. A medical finding does not make somebody less

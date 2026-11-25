@@ -38,7 +38,7 @@ import {
 import { isSchemaMissing } from '@/lib/job-family/embed';
 import { DEFAULT_JOB_FAMILY_CONFIG } from '@/lib/job-family/config';
 import type { BertopicConfig, JobFamilyConfig } from '@/lib/job-family/config';
-import { TENANTS, getCurrentTenantId } from '@/lib/tenant';
+import { getCurrentTenantId, tenantNameMap } from '@/lib/tenant';
 import { visibleJobProfileIds } from '@/lib/job-profile-tenant-scope';
 import {
   classifyOutlier,
@@ -201,12 +201,13 @@ export type TopicResults = {
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-function toSummary(r: typeof jobFamilyTopicRuns.$inferSelect): TopicRunSummary {
+async function toSummary(r: typeof jobFamilyTopicRuns.$inferSelect): Promise<TopicRunSummary> {
+  const tenantNames = await tenantNameMap();
   return {
     runId: r.id,
     status: r.status,
     tenantId: r.tenantId ?? null,
-    tenantName: r.tenantId ? (TENANTS.find((t) => t.id === r.tenantId)?.name ?? null) : null,
+    tenantName: r.tenantId ? (tenantNames.get(r.tenantId) ?? null) : null,
     progress: (r.progress as TopicProgress | null) ?? null,
     numDocuments: r.numDocuments ?? 0,
     numTopics: r.numTopics ?? 0,
@@ -304,7 +305,7 @@ export async function startTopicRunAction(
   await requirePermission('job_profiles.manage');
 
   const tenantId = scope === 'tenant' ? await getCurrentTenantId() : null;
-  const tenantName = tenantId ? (TENANTS.find((t) => t.id === tenantId)?.name ?? 'Company ini') : null;
+  const tenantName = tenantId ? ((await tenantNameMap()).get(tenantId) ?? 'Company ini') : null;
 
   const embedded = await countEmbedded(tenantId);
   if (embedded === null) {
@@ -480,7 +481,7 @@ export async function getTopicRunStatusAction(runId: string): Promise<TopicRunSu
         ),
       )
       .limit(1);
-    return r ? toSummary(r) : null;
+    return r ? await toSummary(r) : null;
   } catch (err) {
     if (isTopicSchemaMissing(err)) return null;
     throw err;
@@ -506,7 +507,7 @@ export async function getLatestTopicRunAction(): Promise<TopicRunSummary | null>
       .where(or(isNull(jobFamilyTopicRuns.tenantId), eq(jobFamilyTopicRuns.tenantId, tenantId)))
       .orderBy(desc(jobFamilyTopicRuns.createdAt))
       .limit(1);
-    return r ? toSummary(r) : null;
+    return r ? await toSummary(r) : null;
   } catch (err) {
     // Table absent (migration 0037 not applied) → treat as "no runs yet" so the
     // page still renders; the build action then surfaces the migration hint.
@@ -628,8 +629,9 @@ async function getTopicResultsActionImpl(runId: string): Promise<TopicResults> {
     generalTitleByTopic.set(t.topicId, t.generalTitle ?? null);
   }
 
+  const tenantNames = await tenantNameMap();
   const tenantName = (id: string | null): string | null =>
-    id ? (TENANTS.find((t) => t.id === id)?.name ?? null) : null;
+    id ? (tenantNames.get(id) ?? null) : null;
 
   const incumbentsByJp = new Map<number, Incumbent[]>();
   for (const m of matchRows) {
@@ -837,7 +839,7 @@ export async function getLatestCompletedTopicRunAction(): Promise<TopicRunSummar
       )
       .orderBy(desc(jobFamilyTopicRuns.createdAt))
       .limit(1);
-    return r ? toSummary(r) : null;
+    return r ? await toSummary(r) : null;
   } catch (err) {
     if (isTopicSchemaMissing(err)) return null;
     throw err;

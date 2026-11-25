@@ -10,8 +10,6 @@ import { sql } from 'drizzle-orm';
 import { isDemoSql } from '@/lib/demo/run-mode';
 import { db } from '@/lib/db';
 import { logAudit } from '@/lib/audit';
-import { ensureUnlocked } from '@/lib/crypto/key-store';
-import { decryptCandidateValue } from '@/lib/candidate-crypto';
 import { demoNamesFor } from '@/lib/demo/store';
 import { ensureLocalUser } from '@/lib/pulse-data';
 import { requirePermission } from '@/lib/rbac';
@@ -258,7 +256,6 @@ async function getDecisionSummaryActionImpl(positionId: string): Promise<Decisio
   await requirePermission('positions.view');
   if (!UUID.test(positionId ?? '')) return { runs: [], unlinked: [] };
   const tenantId = await getCurrentTenantId();
-  await ensureUnlocked().catch(() => false);
   const pickRes = await db.execute(sql`
     SELECT pp.id::text AS id, pp.candidate_id::text AS "candidateId", pp.program_code AS "programCode",
            pp.notes, pp.run_id::text AS "runId", pp.updated_at AS "decidedAt",
@@ -279,7 +276,7 @@ async function getDecisionSummaryActionImpl(positionId: string): Promise<Decisio
       runs: [],
       unlinked: picks.map((p) => ({
         pickId: p.id,
-        name: demoNames.get(p.candidateId) ?? decryptCandidateValue(p.candidateName) ?? 'Kandidat',
+        name: demoNames.get(p.candidateId) ?? (p.candidateName || 'Kandidat'),
         programCode: p.programCode,
         justification: p.notes ?? null,
         decidedAt: new Date(p.decidedAt).toISOString(),
@@ -331,7 +328,7 @@ async function getDecisionSummaryActionImpl(positionId: string): Promise<Decisio
           .map((x) => ({
             rank: Number(x.rank),
             candidateId: x.candidateId,
-            name: demoResultNames.get(x.candidateId) ?? decryptCandidateValue(x.name) ?? 'Kandidat',
+            name: demoResultNames.get(x.candidateId) ?? (x.name || 'Kandidat'),
             score: Number(x.score),
           })),
         decisions: picks
@@ -339,7 +336,7 @@ async function getDecisionSummaryActionImpl(positionId: string): Promise<Decisio
           .map((p) => ({
             pickId: p.id,
             candidateId: p.candidateId,
-            name: demoNames.get(p.candidateId) ?? decryptCandidateValue(p.candidateName) ?? 'Kandidat',
+            name: demoNames.get(p.candidateId) ?? (p.candidateName || 'Kandidat'),
             candidateDeleted: p.deletedAt != null,
             programCode: p.programCode,
             rankInRun: listedRank.get(p.candidateId) ?? poolRank.get(`${r.id}:${p.candidateId}`) ?? null,
@@ -355,7 +352,7 @@ async function getDecisionSummaryActionImpl(positionId: string): Promise<Decisio
       .filter((p) => !p.runId)
       .map((p) => ({
         pickId: p.id,
-        name: demoNames.get(p.candidateId) ?? decryptCandidateValue(p.candidateName) ?? 'Kandidat',
+        name: demoNames.get(p.candidateId) ?? (p.candidateName || 'Kandidat'),
         programCode: p.programCode,
         justification: p.notes ?? null,
         decidedAt: new Date(p.decidedAt).toISOString(),

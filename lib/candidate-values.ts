@@ -3,6 +3,7 @@
 // (lib/demo/candidate-demo-actions.ts) so both validate a form the same way.
 import type { DisciplineStatus, McuStatus } from '@/lib/db/schema';
 
-export const DISCIPLINE_VALUES = ['CLEAR', 'ST', 'ACTIVE_SP', 'SP_UNDER_2_YEARS', 'SP3', 'SP_FIRST_LAST', 'WARNING', 'SANCTION'] as const satisfies readonly DisciplineStatus[];
+// Lightest → heaviest, the order lib/discipline.ts defines (DISCIPLINE_LEVELS).
+export const DISCIPLINE_VALUES = ['CLEAR', 'ST', 'SP_OVER_2_YEARS', 'SP_UNDER_2_YEARS', 'ACTIVE_SP', 'SP3', 'SP_FIRST_LAST', 'WARNING', 'SANCTION'] as const satisfies readonly DisciplineStatus[];
 export const MCU_VALUES = ['fit', 'fit_with_note', 'unfit', 'expired'] as const satisfies readonly McuStatus[];
 export const PERFORMANCE_VALUES = ['A', 'B', 'C', 'D', 'E'] as const;

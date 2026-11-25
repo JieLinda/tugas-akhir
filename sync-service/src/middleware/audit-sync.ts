@@ -21,8 +21,8 @@ export function auditSyncRuns() {
     if (jobKey === "all:background") return next();
 
     // Operational endpoints (routes/admin.ts) are not syncs. Auditing them would
-    // fill the Sinkronisasi page's run history with rows for unlocking
-    // encryption or bouncing a connection pool, burying the actual sync runs the
+    // fill the Sinkronisasi page's run history with rows for reading settings
+    // or bouncing a connection pool, burying the actual sync runs the
     // page exists to show. The "_" prefix is the convention that marks them.
     if (jobKey.startsWith("_")) return next();
 

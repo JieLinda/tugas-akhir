@@ -38,6 +38,7 @@ const nextConfig = {
       { source: '/family-configuration', destination: '/posisi/job-family', permanent: false },
       { source: '/family-tree', destination: '/posisi/job-family', permanent: false },
       { source: '/settings/roles', destination: '/settings/users?tab=roles', permanent: false },
+      { source: '/settings/security', destination: '/settings/sync', permanent: false },
       {
         source: '/job-profiles',
         has: [{ type: 'query', key: 'tab', value: 'match' }],

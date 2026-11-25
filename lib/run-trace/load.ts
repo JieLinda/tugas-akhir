@@ -15,8 +15,6 @@ import { isDemoMode } from '@/lib/app-mode';
 import { loadDemoCopies } from '@/lib/demo/store';
 import { pseudonymizeIdentifiers } from '@/lib/demo/pseudonymize';
 import * as schema from '@/lib/db/schema';
-import { decryptOrNull, ensureUnlocked } from '@/lib/crypto/key-store';
-import { decryptCandidateRows } from '@/lib/candidate-crypto';
 import { rerunSpec } from '@/lib/rerun-modes';
 import type {
   CensusKind,
@@ -30,9 +28,8 @@ import { demoInitialsById, demoScrub } from '@/lib/demo/names';
 export type TraceStageStatus = {
   /** A row exists for this stage. */
   stored: boolean;
-  /** It could be opened and parsed. */
+  /** It could be parsed. */
   readable: boolean;
-  sealed: boolean;
   bytes: number | null;
   /** Why it is missing or unreadable, in the operator's language. */
   reason: string | null;
@@ -98,12 +95,11 @@ async function readTraceStage(
   tenantId: string,
   stage: 'pool' | 'engine',
 ): Promise<{ trace: any | null; status: TraceStageStatus }> {
-  let row: { payload: string; sealed: boolean; byteSize: number } | undefined;
+  let row: { payload: string; byteSize: number } | undefined;
   try {
     [row] = await db
       .select({
         payload: schema.scoringRunTraces.payload,
-        sealed: schema.scoringRunTraces.sealed,
         byteSize: schema.scoringRunTraces.byteSize,
       })
       .from(schema.scoringRunTraces)
@@ -121,7 +117,6 @@ async function readTraceStage(
       status: {
         stored: false,
         readable: false,
-        sealed: false,
         bytes: null,
         reason: isMissingRelation(err)
           ? 'Tabel jejak belum ada di database ini (drizzle/0092 belum diterapkan).'
@@ -135,38 +130,32 @@ async function readTraceStage(
       status: {
         stored: false,
         readable: false,
-        sealed: false,
         bytes: null,
         reason:
           stage === 'engine'
-            ? 'Run ini tidak menyimpan jejak engine — dihitung sebelum penyimpanan jejak ada, atau kunci enkripsi scoring-service terkunci saat run selesai (lihat run_info.trace).'
+            ? 'Run ini tidak menyimpan jejak engine — dihitung sebelum penyimpanan jejak ada, atau penulisannya gagal saat run selesai (lihat run_info.trace).'
             : 'Run ini tidak menyimpan jejak pembentukan pool — run turunan (pool-nya pool induk + kandidat pembanding), atau dibuat sebelum penyimpanan jejak ada.',
       },
     };
   }
-  const opened = decryptOrNull(row.payload);
-  if (opened.locked || opened.error || !opened.value) {
+  if (!row.payload) {
     return {
       trace: null,
       status: {
         stored: true,
         readable: false,
-        sealed: row.sealed,
         bytes: row.byteSize,
-        reason: opened.locked
-          ? 'Jejak tersimpan terenkripsi dan kunci data aplikasi sedang terkunci.'
-          : `Jejak tersimpan tetapi gagal dibuka: ${opened.error ?? 'isi kosong'}`,
+        reason: 'Jejak tersimpan tetapi isinya kosong.',
       },
     };
   }
-  const trace = parseJson(opened.value);
+  const trace = parseJson(row.payload);
   const okShape = trace && trace.stage === stage;
   return {
     trace: okShape ? trace : null,
     status: {
       stored: true,
       readable: Boolean(okShape),
-      sealed: row.sealed,
       bytes: row.byteSize,
       reason: okShape ? null : 'Isi jejak tidak dikenali.',
     },
@@ -232,8 +221,6 @@ async function loadRunTraceBundleRaw(runId: string, tenantId: string): Promise<R
   `);
   const run = (runRes.rows as any[])[0];
   if (!run) return null;
-  await ensureUnlocked().catch(() => false);
-
   const configSnapshot = parseJson(run.configSnapshot);
   let runInfo = parseJson(run.runInfo);
   if (!runInfo) {
@@ -274,24 +261,22 @@ async function loadRunTraceBundleRaw(runId: string, tenantId: string): Promise<R
   const engineTrace = engine.trace as EngineTrace | null;
   const poolTrace = pool.trace as PoolTrace | null;
 
-  // Everyone the run (or its trace) names, decrypted once.
+  // Everyone the run (or its trace) names, read once.
   const ids = new Set<string>([...poolRows.map((r) => r.candidateId), ...resultRows.map((r) => r.candidateId)]);
   for (const id of Object.keys(engineTrace?.candidates ?? {})) ids.add(id);
   for (const g of poolTrace?.gate ?? []) ids.add(g.candidateId);
   const idList = [...ids];
   const candRows = idList.length
-    ? decryptCandidateRows(
-        await db
-          .select({
-            id: schema.candidates.id,
-            name: schema.candidates.name,
-            tenantId: schema.candidates.tenantId,
-            employeeId: schema.candidates.employeeId,
-            deletedAt: schema.candidates.deletedAt,
-          })
-          .from(schema.candidates)
-          .where(inArray(schema.candidates.id, idList)),
-      )
+    ? await db
+        .select({
+          id: schema.candidates.id,
+          name: schema.candidates.name,
+          tenantId: schema.candidates.tenantId,
+          employeeId: schema.candidates.employeeId,
+          deletedAt: schema.candidates.deletedAt,
+        })
+        .from(schema.candidates)
+        .where(inArray(schema.candidates.id, idList))
     : [];
   const tenantRows = await db.select({ id: schema.tenants.id, name: schema.tenants.name }).from(schema.tenants);
   const tenantName = new Map(tenantRows.map((t) => [t.id, t.name]));

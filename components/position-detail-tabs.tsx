@@ -4,6 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { leftCauseText, LEFT_CAUSE_HINT } from "@/lib/run-compare-format";
+import { CRITERION_LABEL, type CriterionKey } from "@/lib/run-compare";
+
+/** " Pada Kompetensi Teknis, Behavior: <what>." — empty when no criterion. */
+function clampSentence(keys: string[] | undefined, what: string): string {
+  if (!keys || keys.length === 0) return "";
+  return ` Pada ${keys.map((k) => CRITERION_LABEL[k as CriterionKey] ?? k).join(", ")}: ${what}.`;
+}
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -1273,6 +1281,17 @@ export function PositionDetailTabs({
                       /** "Tambah Kandidat Pembanding" child rows only. */
                       rerunSource?: 'new' | 'existing_pool' | 'carried' | null;
                       rerunAnchorsSource?: 'parent' | 'live_fallback' | null;
+                      /** Criteria counted AT an end of the parent's range (anchored TOPSIS clamp). */
+                      topsisClamped?: string[];
+                      /** …of which above the parent's best / below its worst. */
+                      topsisClampedAbove?: string[];
+                      topsisClampedBelow?: string[];
+                      /** FR-RR-09 markers against the PARENT's top N (children only). */
+                      rerunMarkers?: {
+                        leftTopN?: boolean;
+                        leftTopNCause?: 'overtaken_by_comparison' | 'pool_shift' | null;
+                        parentPoolRank?: number | null;
+                      } | null;
                     };
                   }
                 ).ahpTopsis;
@@ -1319,6 +1338,28 @@ export function PositionDetailTabs({
                           </TooltipContent>
                         </Tooltip>
                       )}
+                      {ahpMeta?.rerunSource === 'new' && (ahpMeta.topsisClamped?.length ?? 0) > 0 && (
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300 cursor-help">
+                              <AlertTriangle className="h-3 w-3" />
+                              Di luar skala induk
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-72">
+                              Run ini memeringkat dengan skala TOPSIS run induk agar urutan kandidat lama
+                              tidak bergeser, sehingga nilai di luar rentang run induk dihitung pada ujung
+                              rentang itu.
+                              {clampSentence(ahpMeta.topsisClampedAbove, 'di atas nilai terbaik run induk, dihitung setara nilai terbaik itu (tidak lebih)')}
+                              {clampSentence(ahpMeta.topsisClampedBelow, 'di bawah nilai terendah run induk, dihitung setara nilai terendah itu (tidak kurang)')}
+                              {!ahpMeta.topsisClampedAbove && !ahpMeta.topsisClampedBelow &&
+                                clampSentence(ahpMeta.topsisClamped, 'di luar rentang run induk')}{' '}
+                              Nilai aspek aslinya tetap tercatat di rincian skor.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                       {ahpMeta?.rerunSource === 'existing_pool' && (
                         <Tooltip>
                           <TooltipTrigger>
@@ -1354,6 +1395,28 @@ export function PositionDetailTabs({
                               direntangkan ke skala yang dihitung saat run ini dibuat. Skala itu
                               bisa sedikit berbeda dari skala kandidat lama; nilainya tercatat
                               di Konfigurasi Run.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      {ahpMeta?.rerunMarkers?.leftTopN && (
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <span className="inline-flex items-center gap-1 rounded-md border border-orange-500/50 bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700 dark:text-orange-300 cursor-help">
+                              {leftCauseText(ahpMeta.rerunMarkers.leftTopNCause)}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-72">
+                              Finalis run induk
+                              {ahpMeta.rerunMarkers.parentPoolRank != null
+                                ? ` (peringkat ${ahpMeta.rerunMarkers.parentPoolRank})`
+                                : ''}{' '}
+                              yang kini berada di luar {ahpMeta.finalistCut ?? 'N'} besar. Baris ini tetap
+                              ditampilkan agar finalis yang tergeser tidak hilang dari pandangan.{' '}
+                              {ahpMeta.rerunMarkers.leftTopNCause
+                                ? LEFT_CAUSE_HINT[ahpMeta.rerunMarkers.leftTopNCause]
+                                : ''}
                             </p>
                           </TooltipContent>
                         </Tooltip>

@@ -48,6 +48,21 @@ export function text(maxLen?: number): Coerce {
   };
 }
 
+/**
+ * A company code: trimmed and UPPER-CASED. Every other writer stores these upper
+ * case — the MSSQL source, and the web's mapping actions, which uppercase the
+ * Company ID — and every reader joins on plain equality
+ * (sync_company_tenant_map.company_id = <table>.company_id). An upload typed
+ * "demo" or "Mpm2 " would otherwise land in no company at all.
+ */
+export function companyCode(maxLen = 10): Coerce {
+  const base = text(maxLen);
+  return (raw) => {
+    const v = base(raw);
+    return typeof v === "string" ? v.toUpperCase() : v;
+  };
+}
+
 /** Integer, tolerating "12,345", " 7 ", and Excel's numeric cells. */
 export function int(): Coerce {
   return (raw) => {
@@ -177,6 +192,27 @@ export type ExcelSourceSpec = {
    * — mirroring how the MSSQL syncs pick the freshest record.
    */
   dedupePreferHighest?: string;
+  /**
+   * A date column that decides which of two records for the SAME conflict key
+   * is current: an uploaded row whose date is OLDER than the stored row's (or
+   * has no date while the stored one has) is not applied, and is reported
+   * instead. Compared by calendar date in Asia/Jakarta, so an assessment of the
+   * same day replaces the stored one (a corrected note). For tables that keep
+   * only the latest record per person — today the behavioural assessment —
+   * where an old workbook would otherwise quietly replace a newer result.
+   */
+  keepNewestBy?: string;
+  /**
+   * How this table stores an NPK, so an upload writes it the way the MSSQL sync
+   * does and every existing join keeps working (excel-ingest canonicalises
+   * before source_key is built):
+   *   • "padded"   — left-padded to 5 (sync_employee_positions, PA, BA,
+   *                  technical competencies; joined as LPAD(e.employee_id, 5, '0'));
+   *   • "employee" — the spelling sync_employees already holds for that person
+   *                  (sync_employees itself, disciplinary, education; joined on
+   *                  plain equality with e.employee_id).
+   */
+  npkForm?: "padded" | "employee";
   /** Never written by DO UPDATE. Defaults to the conflict target. */
   immutable?: string[];
   /** Extra Petunjuk paragraphs appended after the generic ones. */
@@ -223,7 +259,7 @@ const educationSourceKey = (r: Record<string, CellValue>): string =>
 const companyCol = (): ExcelColumn => ({
   header: "COMPANY_ID",
   column: "company_id",
-  coerce: text(10),
+  coerce: companyCode(10),
   required: true,
   samples: ["MPM2", "MPM2", "MPM5"],
   note: "COMPANY_ID  — Kode company di MSSQL (mis. MPM2). Wajib; menentukan tenant lewat pemetaan Company→Tenant.",
@@ -287,8 +323,12 @@ export const EXCEL_SOURCES: ExcelSourceSpec[] = [
     desc: "Master karyawan: NPK, nama, grade, divisi, departemen. Menggantikan tarikan dari MSSQL MPMDS.",
     table: "sync_employees",
     conflictTarget: ["employee_id"],
+    npkForm: "employee",
     columns: [
-      { ...companyCol(), required: false },
+      // Required (it used to be optional): an employee without a company maps to
+      // no tenant, so they never become a candidate — and re-uploading such a
+      // file over a correct one erased their company.
+      companyCol(),
       employeeCol(),
       {
         header: "DISPLAY_NAME",
@@ -547,6 +587,7 @@ export const EXCEL_SOURCES: ExcelSourceSpec[] = [
     label: "Penempatan Karyawan",
     desc: "Pemetaan karyawan ke posisi, termasuk penanda posisi utama dan masa berlaku.",
     table: "sync_employee_positions",
+    npkForm: "padded",
     conflictTarget: ["source_key"],
     immutable: ["source_key", "company_id", "employee_id", "position_id", "valid_from"],
     derived: [{ column: "source_key", build: employeePositionSourceKey }],
@@ -607,6 +648,7 @@ export const EXCEL_SOURCES: ExcelSourceSpec[] = [
     label: "Kompetensi Teknis",
     desc: "Pemetaan kompetensi teknis per karyawan: level yang dituntut jabatan vs level yang dicapai.",
     table: "sync_technical_competencies",
+    npkForm: "padded",
     conflictTarget: ["source_key"],
     // position-sync.ts:360-372 keeps the newest MODI_DATE (falling back to
     // CREATE_DATE) when the source has several rows for one source_key.
@@ -758,6 +800,7 @@ export const EXCEL_SOURCES: ExcelSourceSpec[] = [
     label: "Penilaian Kinerja",
     desc: "Riwayat performance appraisal per tahun (S1, S2, promosi).",
     table: "sync_performance_appraisals",
+    npkForm: "padded",
     conflictTarget: ["company_id", "employee_id", "tahun", "seq"],
     columns: [
       companyCol(),
@@ -916,10 +959,13 @@ export const EXCEL_SOURCES: ExcelSourceSpec[] = [
     label: "Kompetensi Perilaku",
     desc: "Hasil assessment center terakhir per karyawan: rekomendasi dan keterangan.",
     table: "sync_behavior_competencies",
+    npkForm: "padded",
     conflictTarget: ["company_id", "employee_id"],
     // Only the latest assessment is kept per employee, same as the MSSQL query's
-    // ROW_NUMBER() ... ORDER BY TGL_PELAKSANAAN DESC.
+    // ROW_NUMBER() ... ORDER BY TGL_PELAKSANAAN DESC — within the file, and
+    // against what is already stored: an older assessment never replaces a newer one.
     dedupePreferHighest: "tgl_pelaksanaan",
+    keepNewestBy: "tgl_pelaksanaan",
     columns: [
       companyCol(),
       employeeCol(),
@@ -951,6 +997,8 @@ export const EXCEL_SOURCES: ExcelSourceSpec[] = [
     extraNotes: [
       "Hanya SATU baris per karyawan (assessment terbaru). Bila file memuat lebih dari satu",
       "baris untuk NPK yang sama, baris dengan TGL_PELAKSANAAN terbaru yang dipakai.",
+      "Baris yang TGL_PELAKSANAAN-nya lebih lama dari assessment yang sudah tersimpan (atau kosong)",
+      "tidak diterapkan dan dilaporkan setelah unggah; tanggal yang sama menggantikan data tersimpan.",
     ],
   },
 
@@ -964,6 +1012,7 @@ export const EXCEL_SOURCES: ExcelSourceSpec[] = [
     label: "Catatan Disiplin",
     desc: "Riwayat pelanggaran & sanksi. Menggantikan tarikan dari API HR.",
     table: "sync_disciplinary",
+    npkForm: "employee",
     conflictTarget: ["company_id", "employee_id", "disciplinary_no"],
     columns: [
       companyCol(),
@@ -1021,8 +1070,10 @@ export const EXCEL_SOURCES: ExcelSourceSpec[] = [
         header: "WARNING_LEVEL",
         column: "warning_level",
         coerce: int(),
-        samples: [1, 3, 0],
-        note: "WARNING_LEVEL — Tingkat surat, ANGKA (0 = ST, 1..3 = SP1..SP3). Menentukan discipline_status kandidat, jadi salah isi di sini bisa mendiskualifikasi orang dari program.",
+        samples: [1, 3, 4],
+        // The HR source's own codes (measured against SANCTION_GIVEN, 2026-11-25);
+        // candidate-populate.ts DISCIPLINE_STATUS_SQL reads them.
+        note: "WARNING_LEVEL — Tingkat surat, ANGKA: 1 = SP1, 2 = SP2, 3 = SP3, 4 = ST (Surat Teguran), 5 = SP Pertama & Terakhir. SP1/SP2 dinilai dari EXPIRY_DATE (masih berlaku / berakhir < 2 tahun / ≥ 2 tahun). Menentukan status disiplin kandidat, jadi salah isi di sini bisa menggugurkan orang dari program.",
         width: 16,
       },
       {
@@ -1099,6 +1150,7 @@ export const EXCEL_SOURCES: ExcelSourceSpec[] = [
     label: "Riwayat Pendidikan",
     desc: "Jenjang, jurusan, institusi, dan IPK per karyawan. Menggantikan tarikan dari API HR.",
     table: "sync_education",
+    npkForm: "employee",
     conflictTarget: ["source_key"],
     immutable: [
       "source_key",

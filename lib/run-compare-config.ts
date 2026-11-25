@@ -9,6 +9,7 @@
 
 import { CRITERIA, type CriterionKey, type Origin, type RunConfigView } from './run-compare';
 import type { RunModelsRecord } from './rerun-modes';
+import { readTopsisAnchors } from '../scoring-service/src/topsis-ranking';
 // The governance editor's own words for operators, so a rule reads the same here.
 import { OPERATOR_LABELS } from '../components/governance/governance-types';
 
@@ -256,5 +257,20 @@ export function configViewFrom(input: {
     positionBasis,
     models: (info.models as RunModelsRecord | undefined) ?? null,
     dataVersions: info.dataVersions ?? null,
+    topsis: topsisViewOf(fz?.topsis, activeCriteria),
   };
+}
+
+/**
+ * The run's TOPSIS yardstick as recorded in `run_info.frozen.topsis`. A run
+ * without the record is classic (it predates anchoring); an anchored record
+ * whose anchors cannot be read keeps `mode: 'anchored'` with null anchors, so
+ * the replay says it cannot verify the run instead of replaying it classically.
+ */
+function topsisViewOf(raw: any, activeCriteria: CriterionKey[] | null): RunConfigView['topsis'] {
+  if (!raw || typeof raw !== 'object') return { mode: 'classic', source: null, recorded: false, anchors: null };
+  const mode = raw.mode === 'anchored' ? 'anchored' : 'classic';
+  const source = raw.source === 'own' || raw.source === 'parent' || raw.source === 'parent_pool' ? raw.source : null;
+  const keys = (activeCriteria ?? (Array.isArray(raw.activeCriteria) ? raw.activeCriteria : [])) as CriterionKey[];
+  return { mode, source, recorded: true, anchors: keys.length > 0 ? readTopsisAnchors(raw, keys) : null };
 }

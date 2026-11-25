@@ -4,8 +4,9 @@ Apa saja yang terjadi sejak tombol "Mulai Penilaian" ditekan sampai peringkat su
 
 | | |
 |---|---|
-| Versi dokumen | 1.5 |
-| Tanggal | 17 November 2026 (versi 1.4 dan 1.3: 5 November 2026; versi 1.2 dan 1.1: 29 Oktober 2026; versi 1.0: 14 Oktober 2026) |
+| Versi dokumen | 1.6 |
+| Tanggal | 25 November 2026 (versi 1.5: 17 November 2026; versi 1.4 dan 1.3: 5 November 2026; versi 1.2 dan 1.1: 29 Oktober 2026; versi 1.0: 14 Oktober 2026) |
+| Perubahan versi 1.6 | 25 November 2026: enkripsi tingkat aplikasi dihapus dari sistem. Data kandidat tersimpan sebagai teks biasa, sehingga langkah buka kunci dan dekripsi hilang dari 1.1–1.4, 2.7–2.9, 5A.2, dan 5A.9; berkas kunci master, tabel `app_encryption_keys`, dan halaman Keamanan dihapus dari Ringkasan, Fase 0, tabel kegagalan, Temuan no. 15–16, serta Lampiran A–D |
 | Perubahan versi 1.5 | 17 November 2026: metode AI Tournament (LLM) dihapus dari sistem; AHP + TOPSIS menjadi satu-satunya metode. Fase 5B diringkas menjadi catatan penghapusan. Rujukan metode LLM di Ringkasan, Fase 0, 2.8, 2.10–2.14, 3.1, 4.3, 4.4, 6.2, 6.4, 6.6, Fase 7, tabel kegagalan, Temuan no. 3 dan 17, serta Lampiran A–D disesuaikan. Run LLM yang tersimpan dan tabel/kolom khusus LLM dihapus oleh `drizzle/0097_remove_llm_tournament.sql`. Narasi AHP tidak lagi ditulis model pada run mode demo (5A.20) |
 | Perubahan versi 1.4 | 5 November 2026: fitur Simulasi penempatan (simulasi peran) dihapus dari sistem beserta tabelnya. Rujukannya di 6.6, Fase 7, dan Lampiran A disesuaikan dengan kode pada commit `024d4a6` |
 | Perubahan versi 1.3 | 5 November 2026: fitur Keyakinan Penempatan (MCU) dihapus dari sistem beserta tabelnya. Rujukannya di 5A.2, 6.6, Fase 7, J1, Temuan no. 21, dan Lampiran A disesuaikan dengan kode pada commit `8f8f62b` |
@@ -111,9 +112,9 @@ Fase 7 halaman posisi ─▶ baca run & hasil ───────────�
 | LLM (kompatibel OpenAI) | scoring-service | `LLM_BASE_URL` (bawaan `http://localhost:8001/v1`), `LLM_MODEL`, `LLM_TIMEOUT_MS` (bawaan 120 detik) | Narasi AHP per finalis (tidak dipanggil pada run mode demo) |
 | Gemini | scoring-service | `GEMINI_API_KEY`, `GEMINI_MODEL` (bawaan `gemini-2.5-flash`), grounding `google_search` | Aspek pendidikan pada AHP + TOPSIS |
 | Embedding | scoring-service | `EMBEDDING_PROVIDER` (bawaan `openai`), `EMBEDDING_API_BASE`, `EMBEDDING_MODEL` (bawaan `nomic-embed-text-v2-moe:latest`) | Mencocokkan judul jabatan ke job profile; dokumen sintetis posisi |
-| Berkas | Web app + scoring-service | `secrets/master.key`, `lib/readiness-config.json`, `lib/scoring-prompts.json` | Kunci dekripsi data kandidat; ambang readiness; prompt pendidikan (Gemini) dan narasi AHP |
+| Berkas | Web app + scoring-service | `lib/readiness-config.json`, `lib/scoring-prompts.json` | Ambang readiness; prompt pendidikan (Gemini) dan narasi AHP |
 
-Di `docker-compose.yml`, ketiga berkas itu di-*mount* dari host ke kontainer web (baca-tulis) dan ke kontainer scoring (baca saja). Dengan begitu, isi yang diubah lewat Tata Kelola juga terbaca oleh scoring-service.
+Di `docker-compose.yml`, kedua berkas itu di-*mount* dari host ke kontainer web (baca-tulis) dan ke kontainer scoring (baca saja). Dengan begitu, isi yang diubah lewat Tata Kelola juga terbaca oleh scoring-service.
 
 ### Fase dan pelakunya
 
@@ -135,7 +136,7 @@ Di `docker-compose.yml`, ketiga berkas itu di-*mount* dari host ke kontainer web
 
 Run scoring **tidak mengambil data dari sistem sumber** (MSSQL, REST, berkas PDF). Ia hanya membaca isi Postgres pada saat run berjalan, sehingga kesegaran hasilnya ditentukan oleh kapan tabel-tabel di bawah ini terakhir diisi. Dari tabel-tabel masukan ini, hanya dua kelompok yang **ikut ditulis karena** run berjalan, dan keduanya dijelaskan di fase berikutnya: cache pemetaan nama kompetensi (langkah 3.1) dan dua tabel kalibrasi (langkah 5A.6–5A.7). Semua tabel lain di bawah ini hanya dibaca oleh run.
 
-Pemeriksaan kode memastikan bahwa **web app maupun scoring-service tidak pernah memanggil sync-service atau topic-service selama run**. `lib/scoring-engine.ts` hanya memanggil `SCORING_SERVICE_URL`. scoring-service hanya keluar ke layanan embedding, LLM, dan Gemini. `SYNC_SERVICE_URL` dan `TOPIC_SERVICE_URL` hanya dipakai di halaman Sinkronisasi, Keamanan, Job Profile, dan Job Family. Ketiga layanan latar terhubung melalui tabel bersama, bukan melalui panggilan.
+Pemeriksaan kode memastikan bahwa **web app maupun scoring-service tidak pernah memanggil sync-service atau topic-service selama run**. `lib/scoring-engine.ts` hanya memanggil `SCORING_SERVICE_URL`. scoring-service hanya keluar ke layanan embedding, LLM, dan Gemini. `SYNC_SERVICE_URL` dan `TOPIC_SERVICE_URL` hanya dipakai di halaman Sinkronisasi, Job Profile, dan Job Family. Ketiga layanan latar terhubung melalui tabel bersama, bukan melalui panggilan.
 
 ### 0.1 Data HR — ditulis sync-service
 
@@ -171,7 +172,7 @@ Kolom `candidates` yang dibaca scoring berasal dari:
 | `discipline_status` | `sync_disciplinary` (REST) | aturan filter |
 | `education`, `major` | `sync_education` jenjang tertinggi (REST) | aspek pendidikan |
 
-Kolom-kolom itu dienkripsi saat ditulis sync-service (19 kolom, `CANDIDATE_ENCRYPTED_KEYS` di `lib/candidate-crypto.ts`). Kuncinya diambil dari berkas master key yang di-*mount* hanya-baca ke kontainer sync. Karena itu web app maupun scoring-service harus membuka kunci yang sama sebelum dapat membacanya.
+Kolom-kolom itu tersimpan sebagai teks biasa, sehingga web app maupun scoring-service membacanya langsung tanpa langkah tambahan.
 
 ### 0.2 Data kurasi dan konfigurasi — ditulis web app
 
@@ -181,7 +182,6 @@ Kolom-kolom itu dienkripsi saat ditulis sync-service (19 kolom, `CANDIDATE_ENCRY
 | `program_templates` | Tata Kelola (`lib/program-actions.ts`); template sistem disemai otomatis per tenant | program diubah | aturan filter, target finalis, matriks AHP, nama kriteria |
 | `candidate_technical_competencies` | **web app**, bukan sync-service. `syncCandidateTechnicalCompetenciesForTenant` (`lib/pulse-data.ts:292`) menghapus lalu mengisi ulang salinan baris aktif `sync_technical_competencies` per tenant, paling sering sekali per 5 menit per proses | saat halaman kandidat atau daftar kandidat di halaman posisi dibuka | kompetensi kandidat (aspek teknis). **Start scoring tidak menyegarkannya**, jadi run memakai salinan terakhir |
 | `job_family_matches` | halaman Pencocokan ("Simpan Pemetaan", pin manual) | operator menyimpan | pasangan posisi/kandidat → job profile |
-| `app_encryption_keys` + berkas `secrets/master.key` | Keamanan (`/settings/security`) | inisialisasi/rotasi kunci | membuka kunci data kandidat |
 | berkas `lib/readiness-config.json`, `lib/scoring-prompts.json` | Tata Kelola | ambang/prompt diubah | ambang readiness; prompt pendidikan (Gemini) dan narasi AHP |
 
 ### 0.3 Data Job Family dan embedding — ditulis topic-service dan web app
@@ -207,17 +207,15 @@ Kolom-kolom itu dienkripsi saat ditulis sync-service (19 kolom, `CANDIDATE_ENCRY
 
 - **Pelaku:** server web, `app/(dashboard)/scoring/new/page.tsx`. Halaman ini dibungkus layout dasbor (`app/(dashboard)/layout.tsx`).
 - **Kegiatan:**
-  - **Layout dasbor** melakukan empat hal setiap kali halaman di-render:
+  - **Layout dasbor** melakukan tiga hal setiap kali halaman di-render:
     - memeriksa sesi login (Keycloak, bila dikonfigurasi);
     - mencatat login;
-    - menentukan akses pengguna;
-    - memanggil `isLocked()`, yang membuka kunci enkripsi dari berkas master key bila belum terbuka.
+    - menentukan akses pengguna.
   - **Halaman** dijaga `requirePagePermission('scoring.run')`; pengguna tanpa izin dialihkan ke `/`. Halaman lalu memuat tiga hal secara paralel: daftar program, daftar posisi, dan tangga grade. Bila tidak ada posisi, pengguna dialihkan ke `/positions?empty=1`.
 - **Aktivitas basis data (DB utama):**
   - Layout:
     - BACA `app_roles`, `app_role_permissions`, `users`;
-    - TULIS `users` (catat login);
-    - BACA `app_encryption_keys` dan **berkas** master key, hanya bila kunci belum terbuka di proses ini.
+    - TULIS `users` (catat login).
   - `listProgramTemplates` (`lib/programs.ts:95`): BACA `program_templates` milik tenant. TULIS template sistem bila tenant belum punya (penyemaian otomatis).
   - `getPositionManagementList` (`lib/pulse-data.ts:2043`). Pembacaan ini berat, padahal wizard hanya memakai sekitar 10 kolom hasilnya. Ia membaca:
     - BACA `critical_positions` dan `program_templates`;
@@ -235,7 +233,7 @@ Kolom-kolom itu dienkripsi saat ditulis sync-service (19 kolom, `CANDIDATE_ENCRY
 
 - **Pelaku:** peramban memanggil server web, `previewGradeFilterCountAction` (`lib/scoring-wizard-actions.ts:151`). Aksi ini berjalan otomatis setiap kali rentang grade atau business unit berubah, termasuk saat wizard pertama tampil (`scoring-wizard.tsx:353-380`).
 - **Kegiatan:** menghitung kandidat yang grade-nya masuk rentang. Membutuhkan izin `scoring.run`.
-- **Aktivitas basis data (DB utama):** BACA `candidates` (id, grade) untuk **semua** kandidat hidup di tenant terpilih. Grade-nya didekripsi dan dihitung di aplikasi, karena kolom terenkripsi tidak bisa disaring di SQL.
+- **Aktivitas basis data (DB utama):** BACA `candidates` (id, grade) untuk **semua** kandidat hidup di tenant terpilih. Grade-nya dibaca sebagai angka dan dihitung di aplikasi, bukan disaring di SQL.
 - **Hasil:** angka total, lolos grade, dan tersaring. Hanya ditampilkan, tidak disimpan.
 
 ### 1.3 Panel pengecualian kandidat (opsional)
@@ -246,7 +244,6 @@ Kolom-kolom itu dienkripsi saat ditulis sync-service (19 kolom, `CANDIDATE_ENCRY
   - BACA `program_templates`, hanya untuk memastikan program ada;
   - BACA `candidates` untuk kolom filter (lewat `loadFilterableCandidates`);
   - BACA `candidates` sekali lagi untuk NPK, jabatan, departemen, dan tenant.
-  - Semua hasilnya didekripsi.
 - **Hasil:** daftar kandidat di panel. Pilihan pengguna dikirim sebagai `excludedCandidateIds` pada langkah 2.7.
 
 ### 1.4 Setelah tombol ditekan, sebelum sesi dibuat
@@ -257,12 +254,12 @@ Wizard (`scoring-wizard.tsx:715-787`) menjalankan **dua server action persiapan*
 2. **`prepareMatrixAction`** (`lib/scoring-wizard-actions.ts:88`), dengan izin `scoring.run`. Aktivitas DB:
    - `syncTemplateCriteriaToPosition`, sama seperti langkah 2.6: bisa TULIS `criteria`;
    - BACA `criteria` berkategori `score`;
-   - BACA `candidates` (nama, jabatan, departemen) untuk semua id dari langkah 1, lalu didekripsi.
+   - BACA `candidates` (nama, jabatan, departemen) untuk semua id dari langkah 1.
 
    Dari semua itu, wizard hanya memakai `criteriaCount` untuk pesan *"N aspek penilaian disiapkan"*.
 3. **`startTournamentSessionAction`**: Fase 2.
 
-**Hasil:** belum ada data penilaian, hanya baris log aktivitas. Saat sesi akhirnya dibuat, tabel `candidates` sudah dibaca dan didekripsi sekitar lima kali dalam satu start: dua kali di sini, dan tiga kali di langkah 2.7–2.9.
+**Hasil:** belum ada data penilaian, hanya baris log aktivitas. Saat sesi akhirnya dibuat, tabel `candidates` sudah dibaca sekitar lima kali dalam satu start: dua kali di sini, dan tiga kali di langkah 2.7–2.9.
 
 ---
 
@@ -344,9 +341,8 @@ Wizard (`scoring-wizard.tsx:715-787`) menjalankan **dua server action persiapan*
 - **Pelaku:** server web, `buildPoolFromCandidateIds` (`lib/scoring-engine.ts`).
 - **Kegiatan:**
   1. Memuat ulang baris kandidat untuk id tersebut. Kompetensi teknis dan riwayat jabatan **tidak** dimuat di sini lagi: keduanya dulu hanya diringkas menjadi teks untuk prompt AI Tournament, dan engine AHP + TOPSIS membacanya sendiri (5A.2).
-  2. Mendekripsi kolam kandidat (`decryptCandidateRows`, `lib/candidate-crypto.ts:122`). Hampir semua kolom kandidat tersimpan sebagai ciphertext `v1:…`, termasuk nama, grade, status MCU, PA, HAV, pendidikan, dan tanggal lahir. Kunci data sudah terbuka di memori proses web, karena layout dasbor memanggil `isLocked()` → `ensureUnlocked()` pada setiap render halaman (`app/(dashboard)/layout.tsx:37`, `lib/crypto/key-store.ts:98`). Pemanggilan itu membaca berkas kunci master dan baris `app_encryption_keys` yang aktif.
-  3. Mengeluarkan **semua** pemegang jabatan. Pencocokannya lewat NPK (dalam beberapa varian padding nol) dan lewat nama yang dinormalisasi.
-  4. Menyaring grade. Grade kandidat dibaca sebagai angka setelah huruf di belakangnya dibuang ("5a" → 5), dan harus berada di antara batas minimum dan maksimum. Batas dari wizard didahulukan; bila tidak ada, dipakai `min_grade_id` / `max_grade_id` milik posisi. Kandidat yang grade-nya tidak terbaca ikut gugur.
+  2. Mengeluarkan **semua** pemegang jabatan. Pencocokannya lewat NPK (dalam beberapa varian padding nol) dan lewat nama yang dinormalisasi.
+  3. Menyaring grade. Grade kandidat dibaca sebagai angka setelah huruf di belakangnya dibuang ("5a" → 5), dan harus berada di antara batas minimum dan maksimum. Batas dari wizard didahulukan; bila tidak ada, dipakai `min_grade_id` / `max_grade_id` milik posisi. Kandidat yang grade-nya tidak terbaca ikut gugur.
 - **Aktivitas basis data (DB utama):**
   - BACA `candidates` berdasarkan id, tenant, dan status hidup.
 - **Hasil:** `pool`, yaitu daftar kandidat yang lolos gerbang. Bila kosong, muncul galat *"Tidak ada kandidat aktif untuk Company ini."* (`:808`) dan tidak ada yang ditulis.
@@ -358,7 +354,7 @@ Wizard (`scoring-wizard.tsx:715-787`) menjalankan **dua server action persiapan*
   - Aturan **advisory** (misalnya MCU, drizzle/0071) dilepas dari pohon sebelum keputusan lolos/gugur dibuat, lalu dinilai sendiri sebagai **tanda** (`flagged`). Aturan ini tidak pernah mengeluarkan siapa pun.
   - Aturan **hard** menentukan `qualified`. Grup yang kosong dianggap terpenuhi.
   - Bila `enforce_filter_rules` aktif, kandidat yang gagal dikeluarkan dan dicatat di `disqualified` dengan alasan berbentuk *"label: pesan"*. Bila tidak aktif, tidak ada yang dikeluarkan dan hanya tanda yang dicatat.
-- **Aktivitas basis data (DB utama):** BACA `candidates` untuk kolom-kolom filter (status disiplin, status MCU, PA, kuadran HAV, rekomendasi behavior, masa kerja, pendidikan) dari semua tenant terpilih, lalu didekripsi. Ini adalah pembacaan **ketiga** atas `candidates` di fase ini.
+- **Aktivitas basis data (DB utama):** BACA `candidates` untuk kolom-kolom filter (status disiplin, status MCU, PA, kuadran HAV, rekomendasi behavior, masa kerja, pendidikan) dari semua tenant terpilih. Ini adalah pembacaan **ketiga** atas `candidates` di fase ini.
 - **Hasil:** `workingPool`, `disqualified[]`, dan `flagged[]`. Bila tidak tersisa satu kandidat pun, muncul galat *"Semua kandidat gagal aturan filter program …"* dan tidak ada yang ditulis.
 
 ### 2.10 Tentukan jumlah finalis dan urutan kolam
@@ -580,8 +576,7 @@ Wizard juga punya label `performance` dan `hav`, tetapi engine tidak pernah mela
     - Pencarian job profile versi ringan: BACA pemetaan Job Family lewat `critical_positions` ⋈ `candidates` ⋈ `job_family_matches`, digabung dengan `critical_positions` ⋈ `positions` ⋈ `job_family_matches` (`findMatchedJobProfileId`). Lalu BACA `sync_job_profiles` (berstatus `completed`) berdasarkan id hasil pemetaan, atau semuanya bila harus dicocokkan lewat judul.
     - BACA `sync_kamus_kompetensi` (seluruh baris) untuk definisi kompetensi.
   - **Kandidat:** `loadAhpCandidates` (`ahp-topsis-engine.ts:1040`).
-    - `ensureUnlocked()` membuka kunci data sekali per proses (`scoring-service/src/services/crypto.ts:168`). Ia membaca **berkas** `secrets/master.key` (atau `PULSE_MASTER_KEY`) dan BACA `app_encryption_keys` yang aktif.
-    - BACA `candidates` berdasarkan id, `deleted_at IS NULL`, `ORDER BY id`. Kolom yang dibaca: nama, NPK, jabatan saat ini, masa kerja, pendidikan, jurusan, status disiplin, status MCU, PA, rekomendasi dan catatan behavior, kuadran HAV. Semuanya didekripsi; nilai yang gagal didekripsi menjadi NULL.
+    - BACA `candidates` berdasarkan id, `deleted_at IS NULL`, `ORDER BY id`. Kolom yang dibaca: nama, NPK, jabatan saat ini, masa kerja, pendidikan, jurusan, status disiplin, status MCU, PA, rekomendasi dan catatan behavior, kuadran HAV.
     - BACA `candidate_technical_competencies`.
     - BACA `candidate_position_history` LEFT JOIN `sync_employee_positions`, untuk melengkapi tanggal mulai dan selesai tiap jabatan.
   - **Bahan rerun** (hanya bila ada run dasar):
@@ -671,7 +666,7 @@ Wizard juga punya label `performance` dan `hav`, tetapi engine tidak pernah mela
 ### 5A.9 Pendidikan pemegang jabatan sebagai acuan cadangan
 
 - **Pelaku:** scoring-service (`:5634-5673`).
-- **Aktivitas basis data (DB utama):** BACA `candidates` (pendidikan dan jurusan pemegang jabatan, dicocokkan lewat `LPAD(employee_id, 5, '0')`), lalu didekripsi.
+- **Aktivitas basis data (DB utama):** BACA `candidates` (pendidikan dan jurusan pemegang jabatan, dicocokkan lewat `LPAD(employee_id, 5, '0')`).
 - **Hasil:** teks syarat pendidikan cadangan, dipakai bila job profile maupun posisi tidak menyatakannya.
 
 ### 5A.10 Aspek 1 — kompetensi teknis
@@ -767,7 +762,7 @@ Wizard juga punya label `performance` dan `hav`, tetapi engine tidak pernah mela
 ### 5A.16 Potongan finalis dan daftar hasil
 
 - **Pelaku:** scoring-service, `composeChildResultList` (`scoring-service/src/rerun-freeze.ts`).
-- **Kegiatan:** pada run root, daftar hasil adalah `target_finalists` teratas. Pada run turunan, daftar hasil adalah gabungan tanpa duplikasi dari N besar menurut peringkat baru (N = jumlah finalis induk), seluruh finalis induk, dan seluruh kandidat pembanding; setiap baris memakai peringkat kolam penuhnya dan diberi penanda kandidat pembanding, baru masuk N besar, atau keluar dari N besar.
+- **Kegiatan:** pada run root, daftar hasil adalah `target_finalists` teratas. Pada run turunan, daftar hasil adalah gabungan tanpa duplikasi dari N besar menurut peringkat baru (N = jumlah finalis induk), seluruh finalis induk, dan seluruh kandidat pembanding; setiap baris memakai peringkat kolam penuhnya dan diberi penanda kandidat pembanding, baru masuk N besar, atau keluar dari N besar. Penanda keluar membawa penyebabnya (`leftTopNCauseOf`, `scoring-service/src/topsis-ranking.ts`): `overtaken_by_comparison` bila setiap kandidat yang kini di atasnya dan sebelumnya tidak adalah kandidat baru, `pool_shift` bila ada kandidat yang di induk di bawahnya kini di atasnya (hanya mungkin pada run turunan lama yang belum memakai skala TOPSIS induk).
 - **Aktivitas basis data:** tidak ada.
 - **Hasil:** daftar `ranked` (baris hasil) dan `rankedAll` (seluruh kolam).
 
@@ -830,7 +825,7 @@ Wizard juga punya label `performance` dan `hav`, tetapi engine tidak pernah mela
   - jumlah kandidat yang dinilai dan jumlah finalis;
   - ringkasan rerun dan *freshness*;
   - status narasi (berapa yang ditulis LLM dan berapa yang memakai templat, serta `disabledBy` bila penulis narasi tidak dipanggil);
-  - peringatan enkripsi bila ada kolom kandidat yang tidak terbaca, dan penanda skor sementara;
+  - penanda skor sementara, hanya untuk kandidat bawaan dari induk lama yang mencatatnya;
   - diagnosis karier dan teknis (sumber acuan, anchors, kompetensi tak terukur);
   - blok AHP (sumber bobot, CR, λmax, matriks, kriteria aktif dan yang dibuang, bobot efektif);
   - model yang dipakai, versi data (sinkronisasi terakhir per sumber, sidik korpus job profile dan kamus), sumber ambang readiness, dan durasi setiap tahap (`timings`).
@@ -850,7 +845,7 @@ Wizard juga punya label `performance` dan `hav`, tetapi engine tidak pernah mela
 | Kelompok | DB utama — BACA | DB utama — TULIS/UBAH/HAPUS | DB vektor — BACA |
 |---|---|---|---|
 | Sesi dan progres | `tournament_sessions` | UBAH `tournament_sessions` (progres, status, `runInfo`) | — |
-| Kandidat | `candidates`, `candidate_technical_competencies`, `candidate_position_history`, `sync_employee_positions`, `app_encryption_keys` | — | — |
+| Kandidat | `candidates`, `candidate_technical_competencies`, `candidate_position_history`, `sync_employee_positions` | — | — |
 | Posisi dan job profile | `critical_positions`, `positions`, `sync_job_profiles`, `job_family_matches`, `sync_positions`, `sync_kamus_kompetensi` | — | `job_profile_embed` |
 | Kompetensi | `kamus_competency_match_cache`, `sync_technical_competencies`, `sync_employee_positions` | — | `kamus_kompetensi_level_embed` |
 | Kalibrasi | `kamus_similarity_calibration`, `job_profile_similarity_calibration`, `job_family_topic_runs`, `job_family_topic_assignments`, `candidate_position_history` | TULIS kedua tabel kalibrasi (hanya bila korpus berubah) | `kamus_kompetensi_level_embed`, `job_profile_embed` |
@@ -958,7 +953,7 @@ Halaman yang dulu bernama "Progress Running", yang masih disebut CLAUDE.md, **su
 | Silsilah run | `getRunTreeAction` (`lib/run-tree-actions.ts:90`) | `scoring_runs` ⋈ `critical_positions` | Dipanggil dua kali, dari dua komponen |
 | Tab Readiness | `getAhpRunDetailAction` (`lib/progress-running-actions.ts:1108`, izin **`job_profiles.view`**) | run ⋈ posisi ⟕ sesi, `program_templates.ahp_config`, `config_snapshot` / `final_ranked` / `run_info` semua run AHP posisi itu, `analysis_results.details`, berkas readiness | Dipanggil dua kali (panel pergeseran peringkat dan analisis kandidat), ditambah saat chip aspek dibuka |
 | Tab Konfigurasi (AHP) | `getRunConfigurationAction` + `getRunSnapshotAction` | run ⋈ posisi ⟕ sesi, `sync_grade_levels`, template live (hanya untuk run tanpa `config_snapshot`), label run dasar, berkas readiness | Menampilkan konfigurasi **yang dibekukan** di 2.12 dan diagnosis 5A.22 |
-| Tab AI Assistant (saat ini disembunyikan, `AI_ASSISTANT_TAB_ENABLED` di `lib/position-result-tabs.ts`) | `chat-actions.ts` (izin `analysis.manage`) | `chat_messages` (didekripsi) | Tidak dimuat selama tab disembunyikan |
+| Tab AI Assistant (saat ini disembunyikan, `AI_ASSISTANT_TAB_ENABLED` di `lib/position-result-tabs.ts`) | `chat-actions.ts` (izin `analysis.manage`) | `chat_messages` | Tidak dimuat selama tab disembunyikan |
 | Tab Peta Job Family | `position-family-map-actions.ts` (izin `job_profiles.view`) | `job_family_topic_*`, `job_family_matches`, `critical_positions` | — |
 
 **Hasil:** peringkat ditampilkan beserta rincian enam aspek, readiness, narasi, konfigurasi yang dibekukan, dan diagnosis run. Keputusan manusia yang diambil **dari** peringkat ini (memilih suksesor, mengecualikan kandidat) ditulis ke tabel lain dan tidak mengubah run.
@@ -989,12 +984,13 @@ Perbedaannya ada pada empat hal: cara kolam disusun, isi `final_ranked` yang men
   - BACA run induk (`scoring_runs`, dibatasi tenant, kolom bernama), pool induk (`scoring_run_pool_aspects`), `critical_positions` + `critical_position_holders`, kandidat yang dipilih (termasuk yang soft-deleted, agar bisa dilaporkan), dan `config_snapshot` induk untuk menilai kandidat baru terhadap aturan induk.
   - TULIS `tournament_sessions` dengan `final_ranked = { ahpRerun: { mode: 'incremental_add', baseRunId, newCandidateIds, existingPoolCandidateIds, frozen } }`. `frozen` (`resolveFrozenBasis`) berisi vektor bobot induk presisi penuh beserta CR/λmax/CI-nya, kriteria aktif, jangkar teknis/karier, target kedalaman, tanggal acuan, model, dan basis posisi induk.
   - TULIS `scoring_runs` dengan `parent_run_id`, `rerun_mode = 'incremental_add'`, `rerun_reason`, `program_template_id` induk, `config_snapshot` warisan induk (termasuk ambang readiness) + blok `rerun` (`RunRerunSnapshot`: klasifikasi setiap kandidat, daftar yang ditolak, basis beku), dan `filter_summary.forceIncluded` (warisan induk + kandidat di luar rentang grade yang dikonfirmasi).
-  - UBAH tautan sesi ke run; TULIS `audit_log` (`run_scoring`, berisi alasan).
+  - UBAH tautan sesi ke run; dalam transaksi yang sama TULIS salinan setiap `scoring_run_exclusions` run induk ke run turunan (pelaku, waktu, alasan, dan catatan asli; `inherited_from_run_id` = run tempat tanda dibuat, drizzle/0102); TULIS `audit_log` (`run_scoring`, berisi alasan dan jumlah tanda yang diwariskan).
 - **Perbedaan di scoring-service (5A):**
   - sesi dengan mode/kunci lama ditolak (`parseRerunSpec`);
   - keenam aspek dan teks mentah setiap kandidat bawaan diambil dari induk (`planFrozenRerun`, `assembleAspectScores`), termasuk kandidat yang sejak itu di-soft-delete; penanda skor sementara kandidat lama ikut terbawa;
   - hanya kandidat `new` yang dinilai, terhadap basis posisi induk, dengan jangkar induk dan tanggal acuan induk (`recencyFactor`/`stintYears` menerima `asOf`; pemegang jabatan "aktif" pada fallback karier dinilai pada tanggal acuan itu);
   - bobot (`frozenWeights`) dan kriteria aktif (`frozenDroppedCriteria`) induk dipakai apa adanya;
+  - skala TOPSIS induk dipakai: pembagi kolom dan titik ideal dari `run_info.frozen.topsis` induk, atau — bila induk tidak mencatatnya — diturunkan dari pool tersimpan induk dengan bobot induk (`source: 'parent_pool'`). TOPSIS dihitung dalam mode berjangkar (`topsisDetailed(…, anchors)`): nilai terbobot kandidat baru di luar rentang [titik ideal negatif, titik ideal positif] dibatasi ke ujung yang terdekat — dua arah (dicatat beserta arahnya di `runInfo.rerun.topsis.clamped` `{criteria, above, below}` dan per baris `topsisClamped` / `topsisClampedAbove` / `topsisClampedBelow`), sehingga kecocokan dan urutan kandidat lama identik dengan induk. Skala yang dipakai dicatat di `run_info.frozen.topsis` (`mode: 'anchored'`), sehingga cucu run memakai skala root;
   - `runInfo.frozen` ditulis untuk setiap run AHP; `runInfo.rerun` mencatat silsilah, klasifikasi, sumber bobot/jangkar, `criteriaLiveDisagrees`, `carriedDeleted`, `positionBasis`, dan model yang berubah;
   - daftar hasil disusun `composeChildResultList` (5A.16).
 - **Setelah dikirim:** pengguna diarahkan ke run turunan, yang menampilkan tahapan proses selama berjalan, lalu banner "Turunan dari Run #X — k kandidat pembanding ditambahkan" beserta alasan, kandidat yang ditolak, nilai yang tidak dibekukan, dan tautan ke perbandingan dengan induk, yang membuka tab "Komparasi Versi" di halaman yang sama (`?tab=komparasi-versi&a=&b=`; tautan lama `?tab=perbandingan-run` dan `/positions/[id]/compare?a=&b=` dialihkan ke sana).
@@ -1002,7 +998,8 @@ Perbedaannya ada pada empat hal: cara kolam disusun, isi `final_ranked` yang men
 ### J2 Penandaan "Ditandai dikecualikan"
 
 - **Pelaku:** server web, `setRunExclusionAction` (`lib/scoring-engine.ts`, izin `scoring.run`).
-- **Aktivitas basis data (DB utama):** TULIS atau HAPUS `scoring_run_exclusions` (alasan, catatan, pelaku), lalu TULIS `audit_log`. Membatalkan tanda juga wajib beralasan, dan alasannya tercatat di audit.
+- **Validasi:** menandai hanya untuk kandidat yang ada di run itu (`scoring_run_pool_aspects`, atau `analysis_results` untuk run lama); membatalkan hanya bila tandanya ada.
+- **Aktivitas basis data (DB utama):** TULIS atau HAPUS `scoring_run_exclusions` (alasan, catatan, pelaku), lalu TULIS `audit_log`. Membatalkan tanda juga wajib beralasan, dan alasannya tercatat di audit. Menandai ulang tanda yang diwarisi menjadikannya keputusan run itu sendiri (`inherited_from_run_id` dikosongkan).
 - **Hasil:** hanya penandaan, berlabel "Ditandai dikecualikan (tidak memengaruhi angka)". Skor, peringkat, dan run tidak berubah, dan tidak ada run turunan yang dibuat. Peringkat ulang tanpa kandidat tertentu (`createExclusionRerank`) sudah dihapus; run lama ber-mode `exclude` tetap terbaca. Memilih kandidat yang ditandai sebagai suksesor meminta konfirmasi tambahan.
 
 ### J2b Penilaian baru dari riwayat posisi
@@ -1057,7 +1054,6 @@ Perbedaannya ada pada empat hal: cara kolam disusun, isi `final_ranked` yang men
 | scoring-service restart di tengah run AHP | service, 4.4 | Sesi tetap `running`; mungkin ada hasil parsial | Progres berhenti, lalu mulai lagi | Pemulihan saat menyala menjalankan ulang engine dari awal; 5A.17 menghapus hasil parsial, jadi aman diulang |
 | Sesi AI Tournament (LLM) dari web app lama, sebelum `drizzle/0097` dijalankan | service, 4.3 | Sesi `failed`; pesannya dicatat di `run_info.failure` | Run tampil "Gagal" dengan pesan *"Metode AI Tournament (LLM) sudah dihapus; sesi ini tidak dinilai…"* | Mulai scoring baru dengan AHP + TOPSIS |
 | Engine melempar galat | service, 4.3 | Sesi `failed`; **run tetap `in_progress`** | Merah: *"Scoring gagal dijalankan…"* | Hapus run, lalu mulai run baru (Temuan no. 1) |
-| Kunci enkripsi tidak tersedia di scoring-service | service, 5A.2 | Kolom kandidat terenkripsi terbaca NULL | Run selesai, tetapi behavior, pendidikan, HAV, dan PA tidak terukur; `runInfo.encryption` mencatatnya | Perbaiki *mount* berkas master key |
 | DB vektor tidak terjangkau | service, 5A.6 / 5A.10 / 5A.11 | Kueri vektor mengembalikan kosong (galat ditelan) | Run selesai; pasangan teknis hanya dari identitas; anchors bersumber `fallback`; karier memakai cadangan kompetensi | Pulihkan DB vektor, lalu jalankan run baru |
 | Layanan embedding mati | service, 5A.3 / 5A.11 | — | Tingkat embedding dilewati; dokumen sintetis gagal dan dicatat di `runInfo.career` | Pulihkan layanan embedding |
 | Gemini tidak dikonfigurasi atau gagal | service, 5A.13 | — | Pendidikan yang tidak cocok persis bersumber `none` (skor 0). Bila semua kandidat `none`, kriteria pendidikan dibuang | Isi `GEMINI_API_KEY` |
@@ -1103,7 +1099,7 @@ Temuan berikut muncul saat menelusuri kode untuk dokumen ini. Semuanya ditulis b
 
 ### Efisiensi
 
-15. **Satu start membaca dan mendekripsi tabel `candidates` sekitar lima kali** (1.4 dua kali, 2.7, 2.8, 2.9), ditambah pratinjau grade di 1.2 yang berjalan pada setiap perubahan rentang. Selain itu:
+15. **Satu start membaca tabel `candidates` sekitar lima kali** (1.4 dua kali, 2.7, 2.8, 2.9), ditambah pratinjau grade di 1.2 yang berjalan pada setiap perubahan rentang. Selain itu:
     - Wizard memuat `getPositionManagementList` secara penuh, padahal hanya sekitar 10 kolomnya yang dipakai.
     - Rute status membaca seluruh baris sesi (termasuk `final_ranked`) setiap 2 detik.
     - `tournament_sessions.run_id` tidak berindeks, padahal beberapa pembacaan halaman posisi melakukan join lewat kolom itu.
@@ -1112,8 +1108,7 @@ Temuan berikut muncul saat menelusuri kode untuk dokumen ini. Semuanya ditulis b
 
 16. **CLAUDE.md**, bagian *Data flow* langkah 3–5:
     - masih menyebut kolam "diacak" (*shuffles*), turnamen bertahap dengan `STAGE_MAX`, dan finalisasi sebagai langkah normal (turnamen dan `STAGE_MAX` sendiri sudah tidak ada di kode sejak versi 1.5);
-    - masih merujuk halaman "Progress Running", yang sudah tidak ada;
-    - di bagian *What cannot be encrypted*, menyebut `name`, `mcu_status`, dan `hav_quadrant` tidak dapat dienkripsi, padahal ketiganya kini termasuk 19 kolom terenkripsi.
+    - masih merujuk halaman "Progress Running", yang sudah tidak ada.
 17. *(Sudah diselesaikan.)* `docs/arsitektur-sistem.md` dulu menggambarkan AI Tournament sebagai turnamen *replace-worst* bertahap dan finalisasi sebagai langkah normal. AI Tournament sudah dihapus (versi 1.5), dan dokumen itu kini hanya menggambarkan AHP + TOPSIS dengan finalisasi sebagai jalur cadangan (langkah 6.4).
 18. *(Sudah diselesaikan.)* Kunci lama `ahpAugment`/`ahpExclude`/`ahpAlwaysInclude` tidak lagi ditulis oleh siapa pun dan ditolak oleh scoring-service (`parseRerunSpec`).
 19. **Narasi AHP hanya diberi pemegang jabatan utama** (`ahp-topsis-engine.ts:6135`), padahal kolam sudah mengecualikan semua pemegang jabatan.
@@ -1147,7 +1142,6 @@ Kolom "Dibaca di" dan "Ditulis di" merujuk nomor langkah dokumen ini. Angka 7 sa
 | `criteria` | 1.4, 2.6 | 1.4 / 2.6 (TULIS, sekali per posisi) | web app |
 | `users` | 1.1, 2.1 | 1.1 (catat login), 2.3 dan 6.6 (upsert pelaku) | web app |
 | `app_roles`, `app_role_permissions` | 1.1, 2.1 dan setiap server action berizin | 2.1 (penyemaian, sekali, bila kosong) | web app |
-| `app_encryption_keys` | 1.1, 5A.2 | — | web app (Keamanan) |
 | `program_templates` | 1.1, 1.3, 1.4, 2.5, 2.6, 5A.14 | 1.1 (semai template sistem bila tenant belum punya) | web app (Tata Kelola) |
 | `critical_positions` | 1.1, 2.4, 3.1, 5A.2–5A.4, 5A.11, 7 | — | web app |
 | `critical_position_holders` | 1.1, 2.4 | — | web app |
@@ -1180,7 +1174,6 @@ Tabel keputusan **sesudah** run tidak ditulis oleh run. Tabel-tabel itu adalah `
 
 | Berkas | Dibaca di | Pengelola |
 |---|---|---|
-| `secrets/master.key` (atau `PULSE_MASTER_KEY`) | 1.1 dan setiap render dasbor (web), 5A.2 (scoring-service; sekali per proses) | Keamanan (`/settings/security`) |
 | `lib/readiness-config.json` | 2.12 (dibekukan ke `config_snapshot`), 5A.19 (penentuan readiness; di-cache di memori scoring-service), 7 | Tata Kelola → Kesiapan & Pensiun |
 | `lib/scoring-prompts.json` | 5A.13 (`ahp_education_grounded`), 5A.20 (`ahp_narrative_agent`); di-cache, dimuat ulang lewat `POST /api/scoring/_reload-prompts` | Tata Kelola → Instruksi & Model AI |
 
@@ -1222,7 +1215,6 @@ Tabel keputusan **sesudah** run tidak ditulis oleh run. Tabel-tabel itu adalah `
 | `EMBEDDING_PROVIDER`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL`, `DOCUMENT_EMBEDDING_MODEL` | scoring | `openai`; `http://localhost:11434/v1`; `nomic-embed-text-v2-moe:latest` | embedding seketika (5A.3, 5A.11) |
 | `TECHNICAL_SIM_FLOOR` / `_CEIL`, `CAREER_SIM_FLOOR` / `_CEIL` | scoring | — | menyematkan anchors dan melewati pengukuran (5A.6, 5A.7) |
 | `CAREER_DEPTH_*`, `CAREER_FALLBACK_*`, `CAREER_RECENCY_DECAY` | scoring | lihat `scoring-service/src/config.ts` | aspek karier (5A.11) |
-| `PULSE_MASTER_KEY_FILE` / `PULSE_MASTER_KEY` | web, scoring | `secrets/master.key` | kunci dekripsi data kandidat |
 | `SCORING_PROMPTS_PATH`, `READINESS_CONFIG_PATH` | scoring | dicari di tata letak repo/kontainer | lokasi berkas bersama |
 | `NEXT_PUBLIC_BASE_PATH` | web | kosong | *base path* aplikasi (Temuan no. 10) |
 | `RBAC_ADMIN_EMAILS` | web | — | email *bootstrap admin* |
@@ -1240,7 +1232,7 @@ Tabel keputusan **sesudah** run tidak ditulis oleh run. Tabel-tabel itu adalah `
 | `lib/scoring-engine.ts` | web | `startTournamentSessionAction`, `notifyScoringService`, `finalizeTournamentAction`, jalur rerun dan eksklusi, hapus run |
 | `lib/programs.ts` | web | template program, evaluasi aturan filter, penyalinan kriteria |
 | `lib/kamus-name-match.ts`, `lib/kamus-name-match-actions.ts` | web | pemetaan nama kompetensi ke kode kamus |
-| `lib/rbac.ts`, `lib/tenant.ts`, `lib/crypto/key-store.ts`, `lib/candidate-crypto.ts` | web | izin, tenant, kunci, dekripsi kandidat |
+| `lib/rbac.ts`, `lib/tenant.ts` | web | izin, tenant |
 | `app/api/tournament/[sessionId]/status/route.ts` | web | rute survei status |
 | `lib/position-bulk-actions.ts`, `lib/rerun-modes.ts` | web | tambah massal, scoring ulang program, reset, tabel mode rerun |
 | `scoring-service/src/index.ts`, `routes.ts`, `runner.ts` | scoring | rute HTTP, penjadwalan, penyapu sesi yatim |
@@ -1249,6 +1241,6 @@ Tabel keputusan **sesudah** run tidak ditulis oleh run. Tabel-tabel itu adalah `
 | `scoring-service/src/technical-anchors.ts`, `career-anchors.ts`, `career-depth-anchors.ts`, `competency-idf.ts`, `kamus-codes.ts` | scoring | kalibrasi dan sensus |
 | `scoring-service/src/ahp-weights.ts`, `ahp.ts`, `topsis.ts`, `pa-score.ts`, `hungarian.ts` | scoring | bobot AHP, TOPSIS, PA, penugasan |
 | `scoring-service/src/llm.ts`, `gemini.ts`, `embeddings.ts`, `ahp-narrative.ts`, `prompts.ts` | scoring | panggilan model dan prompt |
-| `scoring-service/src/db/postgres.ts`, `services/crypto.ts` | scoring | dua pool koneksi; dekripsi |
+| `scoring-service/src/db/postgres.ts` | scoring | dua pool koneksi |
 | `sync-service/src/services/candidate-populate.ts`, `position-sync.ts`, `job-profile-sync.ts`, `kamus-sync.ts` | sync | penulis data hulu (Fase 0) |
 | `topic-service/app/` | topic | pengelompokan job family (Fase 0) |

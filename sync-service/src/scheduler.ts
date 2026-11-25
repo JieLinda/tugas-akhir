@@ -6,6 +6,10 @@ import { finishRun, startRun } from "./services/sync-audit.js";
 let task: cron.ScheduledTask | null = null;
 
 export function startScheduler() {
+  if (!config.sourceSyncEnabled) {
+    console.log("[SCHEDULER] Weekly sync NOT registered: SOURCE_SYNC_ENABLED=false");
+    return;
+  }
   const expression = config.syncCronExpression;
 
   if (!cron.validate(expression)) {

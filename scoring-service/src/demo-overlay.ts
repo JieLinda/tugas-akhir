@@ -11,7 +11,6 @@
 // pairing, which must keep meaning the real person.
 
 import { query } from "./db/postgres.js";
-import { decryptField, ensureUnlocked } from "./services/crypto.js";
 import { formulaQuadrant } from "./hav-effective.js";
 
 export type DemoTechnicalCompetency = {
@@ -103,7 +102,7 @@ const ROW_FIELDS = [
 
 type ScalarField = Exclude<DemoEditableField, "technicalCompetencies">;
 
-/** The candidate's real values for the editable scalar fields, decrypted. */
+/** The candidate's real values for the editable scalar fields. */
 export type DemoRealValues = { [K in ScalarField]: string | null };
 
 /** Same comparison form as lib/demo/fields.ts `demoComparable`. */
@@ -273,14 +272,13 @@ function serviceFormulaOf(performanceGrade: string | null, behaviorRecommendatio
 }
 
 /**
- * Demo copies, decrypted and RESOLVED against each candidate's real record now
+ * Demo copies, RESOLVED against each candidate's real record now
  * (resolveDemoCopy): the scorers see edited fields from the copy and every
- * other field live. A copy that cannot be opened is skipped.
+ * other field live. A copy that cannot be parsed is skipped.
  */
 export async function loadDemoCopies(ids: string[]): Promise<Map<string, DemoCopy>> {
   const out = new Map<string, DemoCopy>();
   if (ids.length === 0) return out;
-  await ensureUnlocked();
   const rows = await query<{ candidateId: string; payload: string } & Record<string, unknown>>(
     `SELECT d.candidate_id::text AS "candidateId", d.payload,
             c.name, c.employee_id AS "employeeId", c.email, c.current_position AS "currentPosition",
@@ -295,14 +293,12 @@ export async function loadDemoCopies(ids: string[]): Promise<Map<string, DemoCop
     [ids],
   );
   for (const r of rows) {
-    const copy = parseCopy(decryptField(r.payload) as string | null);
+    const copy = parseCopy(r.payload ?? null);
     if (!copy) continue;
     const real = {} as DemoRealValues;
     for (const field of [...ROW_FIELDS, "employeeId"] as ScalarField[]) {
       const raw = r[field];
-      // employee_id is not encrypted; decryptField passes plain values through.
-      const v = raw == null ? null : decryptField(raw as string);
-      real[field] = v == null ? null : String(v);
+      real[field] = raw == null ? null : String(raw);
     }
     out.set(r.candidateId, resolveDemoCopy(copy, real, serviceFormulaOf));
   }
@@ -327,7 +323,7 @@ export async function loadDemoOnIds(ids: string[]): Promise<Set<string>> {
 }
 
 /**
- * A decrypted engine candidate row with its demo copy's values. Only keys the
+ * An engine candidate row with its demo copy's values. Only keys the
  * row already carries are replaced, so each loader keeps its own shape.
  * `yearsExperience` stays numeric where the row holds a number.
  */

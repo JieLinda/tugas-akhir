@@ -10,7 +10,6 @@ import { isDemoMode } from '@/lib/app-mode';
 import { picksOfCurrentMode, runsOfCurrentMode } from '@/lib/demo/run-mode';
 import { getCurrentTenantId } from '@/lib/tenant';
 import { liveCandidate } from '@/lib/candidate-visibility';
-import { decryptCandidateValue } from '@/lib/candidate-crypto';
 import { demoNamesFor } from '@/lib/demo/store';
 import { ensureLocalUser } from '@/lib/pulse-data';
 import { logAudit } from '@/lib/audit';
@@ -152,7 +151,7 @@ export async function listPositionPicks(positionId: string): Promise<PositionPic
     id: r.id,
     positionId: r.positionId,
     candidateId: r.candidateId,
-    candidateName: demoNames.get(r.candidateId) ?? decryptCandidateValue(r.candidateName) ?? 'Kandidat',
+    candidateName: demoNames.get(r.candidateId) ?? (r.candidateName || 'Kandidat'),
     candidateDeleted: r.candidateDeletedAt != null,
     programCode: r.programCode,
     notes: r.notes,
@@ -273,7 +272,7 @@ export async function savePositionPickAction(formData: FormData) {
     entityType: 'position_pick',
     entityId: positionId,
     action: 'update',
-    summary: `Kandidat "${decryptCandidateValue(candidate[0]?.name) ?? candidateId}" ditambahkan ke suksesor program ${programCode}${runId ? ` (dasar: run ${runId})` : ''}. Justifikasi: ${notes}`.slice(0, 500),
+    summary: `Kandidat "${candidate[0]?.name || candidateId}" ditambahkan ke suksesor program ${programCode}${runId ? ` (dasar: run ${runId})` : ''}. Justifikasi: ${notes}`.slice(0, 500),
     diff: { runId, candidateId, programCode, justification: notes },
   });
 
@@ -319,7 +318,7 @@ export async function deletePositionPickAction(formData: FormData) {
     entityType: 'position_pick',
     entityId: existing[0].positionId,
     action: 'delete',
-    summary: `Suksesor "${decryptCandidateValue(existing[0].candidateName) ?? '-'}" (program ${existing[0].programCode}) dihapus`,
+    summary: `Suksesor "${existing[0].candidateName || '-'}" (program ${existing[0].programCode}) dihapus`,
     // The justification the decision carried is kept in the trail it leaves.
     diff: { removedJustification: existing[0].notes ?? null },
   });

@@ -1,6 +1,7 @@
 import type { ComboboxOption } from '@/components/ui/combobox';
 import type { CandidateAttributeField } from '@/lib/db/schema';
 import { HAV_QUADRANTS } from '@/lib/hav-quadrant';
+import { DISCIPLINE_LEVELS } from '@/lib/discipline';
 
 /**
  * Canonical "real" value domains for each candidate attribute a program filter
@@ -33,16 +34,9 @@ export const FIELD_INPUT_KIND: Record<CandidateAttributeField, FieldInputKind> =
  * free entry. Numeric fields (`yearsExperience`) have no option list.
  */
 export const FIELD_VALUE_OPTIONS: Partial<Record<CandidateAttributeField, ComboboxOption[]>> = {
-  disciplineStatus: [
-    { value: 'CLEAR', label: 'Clear' },
-    { value: 'ST', label: 'ST (Surat Teguran)' },
-    { value: 'ACTIVE_SP', label: 'Active SP' },
-    { value: 'SP_UNDER_2_YEARS', label: 'SP < 2 Years' },
-    { value: 'SP3', label: 'SP3' },
-    { value: 'SP_FIRST_LAST', label: 'SP First/Last' },
-    { value: 'WARNING', label: 'Warning' },
-    { value: 'SANCTION', label: 'Sanction' },
-  ],
+  // Lightest → heaviest (lib/discipline.ts), so a rule admitting "up to X"
+  // is a prefix of this list.
+  disciplineStatus: DISCIPLINE_LEVELS.map((l) => ({ value: l.value, label: l.optionLabel })),
   mcuStatus: [
     { value: 'fit', label: 'Fit' },
     { value: 'fit_with_note', label: 'Fit dengan catatan' },

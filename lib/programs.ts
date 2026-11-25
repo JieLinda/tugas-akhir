@@ -24,15 +24,9 @@ import { normalizeHavQuadrant } from '@/lib/hav-quadrant';
 import { withEffectiveHav } from '@/lib/hav-placements';
 import { forCurrentMode } from '@/lib/demo/store';
 import { isDemoMode } from '@/lib/app-mode';
-import { ensureUnlocked } from '@/lib/crypto/key-store';
 import { systemProgramTemplates } from '@/lib/program-defaults';
 import { getCurrentTenantId } from '@/lib/tenant';
 import { ahpWeightPercentages, matchCanonicalCriterion } from '@/lib/scoring-criteria';
-import {
-  decryptCandidateRow,
-  decryptCandidateRows,
-  decryptCandidateValue,
-} from '@/lib/candidate-crypto';
 
 export type ProgramTemplate = {
   id: string;
@@ -665,14 +659,10 @@ export async function getCandidateFilterValues(
     WHERE tenant_id = ${id} AND deleted_at IS NULL
   `);
   const row = (result.rows?.[0] ?? {}) as Record<string, string[] | null>;
-  // The DISTINCT above ran over ciphertext (each value encrypts with its own
-  // IV), so decrypt every distinct ciphertext and dedupe the resulting
-  // plaintext values.
   const clean = (v: string[] | null | undefined) =>
     Array.from(
       new Set(
         (v ?? [])
-          .map((s) => decryptCandidateValue(s))
           .filter((s): s is string => s != null && s !== ''),
       ),
     )
@@ -682,7 +672,7 @@ export async function getCandidateFilterValues(
   // HAV values are stored in mixed forms ("6" vs "Kuadran #6"); canonicalize to
   // the quadrant number and de-duplicate so the picker never shows duplicates.
   const havCanonical = Array.from(
-    new Set((row.havQuadrant ?? []).map((s) => normalizeHavQuadrant(decryptCandidateValue(s) ?? '')).filter((s) => s !== '')),
+    new Set((row.havQuadrant ?? []).map((s) => normalizeHavQuadrant(s ?? '')).filter((s) => s !== '')),
   ).sort((a, b) => Number(a) - Number(b));
 
   return {
@@ -692,6 +682,16 @@ export async function getCandidateFilterValues(
     behaviorRecommendation: clean(row.behaviorRecommendation),
     education: clean(row.education),
   };
+}
+
+/** `years_experience` is a text column; filter rules compare it as a number. */
+function withNumericYears<T extends { yearsExperience: string | number | null }>(
+  row: T,
+): Omit<T, 'yearsExperience'> & { yearsExperience: number | string | null } {
+  const raw = row.yearsExperience;
+  if (raw == null || raw === '') return { ...row, yearsExperience: null };
+  const num = Number(raw);
+  return { ...row, yearsExperience: Number.isNaN(num) ? raw : num };
 }
 
 export async function loadFilterableCandidates(
@@ -718,13 +718,7 @@ export async function loadFilterableCandidates(
     // Every filter-rule evaluation in the app reads this pool, so a tombstone
     // slipping through here reaches a scoring run itself.
     .where(and(inArray(schema.candidates.tenantId, ids), liveCandidate()));
-  // Every targeted column is encrypted at rest, so decrypt first; ORDER BY name
-  // happens here (after decryption) rather than in SQL. Unlock BEFORE that: a
-  // sealed row decrypted while the DEK is still unloaded (the first request
-  // after a restart races the layout's unlock) reads as all-null and would be
-  // dropped from a scoring pool as if it had failed every rule.
-  await ensureUnlocked();
-  const decrypted = decryptCandidateRows(rows).sort((a, b) =>
+  const sorted = rows.map(withNumericYears).sort((a, b) =>
     (a.name ?? '').localeCompare(b.name ?? ''),
   );
   // HAV rules judge the quadrant IN FORCE (manual > upload > formula), not the
@@ -733,7 +727,7 @@ export async function loadFilterableCandidates(
   // Demo mode: OFF candidates take no part in any eligibility evaluation, and
   // the ON ones are judged on their demo copy (lib/demo/). BEFORE the HAV fold,
   // so the HAV in force follows the copy too.
-  const visible = await forCurrentMode(decrypted, (r) => r.id, { onlyOn: true });
+  const visible = await forCurrentMode(sorted, (r) => r.id, { onlyOn: true });
   return (await withEffectiveHav(visible)) as CandidateForFilter[];
 }
 
@@ -742,7 +736,7 @@ export async function loadFilterableCandidates(
  *
  * Exists because a rerun has to answer "does this one person clear the program's
  * rules?" for a badge, and the only loader took tenants — so answering it meant
- * decrypting every live candidate of every business unit to look at two of them.
+ * loading every live candidate of every business unit to look at two of them.
  *
  * Keeps `liveCandidate()` for the reason the tombstone exists at all: a
  * soft-deleted person must never be evaluated as if they were still a candidate.
@@ -768,8 +762,7 @@ export async function loadFilterableCandidatesByIds(
     })
     .from(schema.candidates)
     .where(and(inArray(schema.candidates.id, ids), liveCandidate()));
-  await ensureUnlocked();
-  const visible = await forCurrentMode(decryptCandidateRows(rows), (r) => r.id, { onlyOn: true });
+  const visible = await forCurrentMode(rows.map(withNumericYears), (r) => r.id, { onlyOn: true });
   return (await withEffectiveHav(visible)) as CandidateForFilter[];
 }
 

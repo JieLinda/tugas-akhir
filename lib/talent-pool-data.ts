@@ -6,8 +6,6 @@ import { candidateAge } from '@/lib/age';
 import { db } from '@/lib/db';
 import * as schema from '@/lib/db/schema';
 import { liveCandidate } from '@/lib/candidate-visibility';
-import { decryptCandidateRows } from '@/lib/candidate-crypto';
-import { ensureUnlocked } from '@/lib/crypto/key-store';
 import {
   applyProgramFilters,
   listProgramTemplates,
@@ -165,18 +163,11 @@ const gradeToNumber = (raw: string | null | undefined): number | null => {
 };
 
 /**
- * Every live candidate of one business unit, decrypted, with the HAV in force
+ * Every live candidate of one business unit, with the HAV in force
  * folded in. Shared by the Talent Pool list and the Talent Mapping population so
  * the two are computed from the same rows.
  */
 async function loadTalentPoolBase(tenantId: string, onlyCandidateId?: string): Promise<TalentPoolBaseRow[]> {
-  // Before any decrypt: the dashboard layout unlocks on every request, but
-  // Next.js renders the layout and the page in PARALLEL, so the first request
-  // after a restart can reach this loader first — and a sealed row decrypted
-  // while locked reads as all-null and is judged "Tidak Lolos". Measured: the
-  // first call in a fresh process put exactly the one sealed Mulia row on the
-  // wrong side. Free after the first call (the DEK is cached).
-  await ensureUnlocked();
   const rows = await db
     .select({
       id: schema.candidates.id,
@@ -206,15 +197,13 @@ async function loadTalentPoolBase(tenantId: string, onlyCandidateId?: string): P
       ),
     );
 
-  // Every selected column except id/employee_id is encrypted at rest, so the
-  // decrypt has to happen before anything reads, compares, or sorts a value.
-  const decrypted = decryptCandidateRows(rows).sort((a, b) =>
+  const sorted = rows.sort((a, b) =>
     (a.name ?? '').localeCompare(b.name ?? ''),
   );
   // Demo mode: OFF candidates are outside the pool, the map and the mapping
   // standing as if deleted; ON ones are their demo copy (lib/demo/). Before the
   // HAV fold, so the HAV in force follows the copy.
-  const visible = await forCurrentMode(decrypted, (r) => r.id, { onlyOn: true });
+  const visible = await forCurrentMode(sorted, (r) => r.id, { onlyOn: true });
   const withHav = await withEffectiveHav(visible);
 
   // Demo mode: the NPK never leaves the server (lib/demo/mask.ts) — this base
@@ -374,7 +363,7 @@ export async function getTalentPoolData(
 // The candidate detail page opens with "is this person in the Talent Pool",
 // which is the one sentence a reader wants before anything else about them.
 // Answering it by calling getTalentPoolData and searching the result would
-// decrypt and evaluate every candidate in the business unit to learn about one,
+// evaluate every candidate in the business unit to learn about one,
 // so this evaluates a single row — through the SAME `applyProgramFilters` and
 // the same default missing-value policy, so the two surfaces cannot disagree
 // about who qualifies.
@@ -436,25 +425,23 @@ export async function getCandidateTalentPoolStatus(
   }
 
   // The HAV in force, exactly as the list computes it — one person cannot be in
-  // the pool on the list and out of it on their own page. Unlocked first for the
-  // same reason as loadTalentPoolBase.
-  await ensureUnlocked();
-  const [decrypted] = await withEffectiveHav(await forCurrentMode(decryptCandidateRows([row]), (r) => r.id, { onlyOn: false }));
+  // the pool on the list and out of it on their own page.
+  const [candidate] = await withEffectiveHav(await forCurrentMode([row], (r) => r.id, { onlyOn: false }));
 
   const [decision] = applyProgramFilters(template, [
     {
-      id: decrypted.id,
+      id: candidate.id,
       // Only the fields the filter engine reads. `name` is required by the
       // type and never evaluated, so it stays empty rather than costing a
       // column this query has no other use for.
       name: '',
-      havQuadrant: decrypted.havQuadrant ?? '',
-      mcuStatus: decrypted.mcuStatus ?? null,
-      disciplineStatus: decrypted.disciplineStatus ?? null,
-      performanceGrade: decrypted.performanceGrade ?? null,
-      behaviorRecommendation: decrypted.behaviorRecommendation ?? null,
-      education: decrypted.education ?? null,
-      yearsExperience: toNumber(decrypted.yearsExperience),
+      havQuadrant: candidate.havQuadrant ?? '',
+      mcuStatus: candidate.mcuStatus ?? null,
+      disciplineStatus: candidate.disciplineStatus ?? null,
+      performanceGrade: candidate.performanceGrade ?? null,
+      behaviorRecommendation: candidate.behaviorRecommendation ?? null,
+      education: candidate.education ?? null,
+      yearsExperience: toNumber(candidate.yearsExperience),
     },
   ]);
 

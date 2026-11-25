@@ -1,6 +1,5 @@
 import { query as pgQuery } from "../db/postgres.js";
 import { config } from "../config.js";
-import { ensureUnlocked, tryOpen } from "./crypto.js";
 
 /**
  * Resolve the MSSQL source-database settings, preferring the UI-managed row in
@@ -16,15 +15,12 @@ import { ensureUnlocked, tryOpen } from "./crypto.js";
  * getPool*() rebuilds from the same frozen literal.
  *
  * ENV FALLBACK IS NOT A COURTESY
- * Two things depend on it:
- *   • An existing deployment that never opens the new settings page must behave
- *     exactly as it does today.
- *   • The password is stored encrypted, and this process may be LOCKED (it holds
- *     the data key only in memory, pushed by the web app after an operator
- *     unlocks). A weekly cron sync running at 01:00 on a service that restarted
- *     at 23:00 would otherwise fail with no human awake. When the password
- *     cannot be decrypted, the env password is used and the degradation is
- *     logged rather than silent.
+ * An existing deployment that never opens the new settings page must behave
+ * exactly as it does today. A row with no stored password also falls back to
+ * the env password.
+ *
+ * The password is stored as plain text in `password_encrypted` (the column
+ * keeps its historical name).
  */
 
 export type SourceKey = "MPMDS" | "MPMHRGA";
@@ -39,8 +35,6 @@ export type ResolvedConnection = {
   trustServerCertificate: boolean;
   /** Where the values came from, for logging and the settings UI. */
   origin: "database" | "env";
-  /** True when a stored password existed but could not be decrypted. */
-  passwordFellBackToEnv: boolean;
 };
 
 type ConnectionRow = {
@@ -76,7 +70,6 @@ function fromEnv(key: SourceKey): ResolvedConnection {
     encrypt: true,
     trustServerCertificate: true,
     origin: "env",
-    passwordFellBackToEnv: false,
   };
 }
 
@@ -102,33 +95,17 @@ async function loadAll(): Promise<Map<SourceKey, ResolvedConnection>> {
     return resolved;
   }
 
-  // Load the key from disk before decrypting anything. Without this the first
-  // sync after a restart would silently fall back to the env password even
-  // though a perfectly good key file is sitting right there.
-  if (rows.some((r) => r.password_encrypted)) await ensureUnlocked();
-
   for (const row of rows) {
     const env = envFor(row.source_key);
-    const decrypted = tryOpen(row.password_encrypted);
-    const passwordFellBackToEnv = row.password_encrypted != null && decrypted == null;
-
-    if (passwordFellBackToEnv) {
-      console.warn(
-        `[DB-SETTINGS] ${row.source_key}: stored password could not be decrypted ` +
-          `(encryption locked?). Falling back to the DB_${row.source_key}_PASSWORD env var.`,
-      );
-    }
-
     resolved.set(row.source_key, {
       server: row.server,
       port: row.port,
       user: row.username,
-      password: decrypted ?? env.password,
+      password: row.password_encrypted || env.password,
       database: row.database_name,
       encrypt: row.encrypt,
       trustServerCertificate: row.trust_server_certificate,
       origin: "database",
-      passwordFellBackToEnv,
     });
   }
 

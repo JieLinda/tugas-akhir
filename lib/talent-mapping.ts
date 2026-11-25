@@ -115,8 +115,7 @@ export type TalentMappingPlacementInfo = {
   /** The automatic answer (upload, else formula) this placement overrode; null = none. */
   baselineQuadrant: number | null;
   baselineSource: TalentMappingBaselineSource;
-  /** Null only when the sealed value could not be opened. */
-  justification: string | null;
+  justification: string;
   placedByName: string | null;
   placedByUsername: string | null;
   /** ISO instant. */
@@ -192,8 +191,6 @@ export type TalentMappingAuditEntry = {
   changedByUsername: string | null;
   /** ISO instant. */
   timestamp: string;
-  /** A sealed value on this row could not be opened (locked app or wrong key). */
-  unreadable: boolean;
 };
 
 export type TalentMappingCounts = {
@@ -310,7 +307,7 @@ export const HAV_GAP_LABEL: Record<HavDeriveGap, string> = {
   'competency-unrecognized': 'Kategori Behavioral Assessment tidak dikenali',
 };
 
-/** Parse a stored/decrypted quadrant into 1..16, or null. */
+/** Parse a stored quadrant into 1..16, or null. */
 export function parseQuadrant(value: string | number | null | undefined): number | null {
   if (value == null || value === '') return null;
   const n = typeof value === 'number' ? value : parseInt(String(value).replace(/\D/g, ''), 10);

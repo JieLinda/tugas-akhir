@@ -62,10 +62,11 @@ describe('TC-TAB result tabs', () => {
 describe('TC-NAV Data Referensi menus', () => {
   const reference = SIDEBAR_GROUPS.find((g) => g.id === 'reference')!;
 
-  test('Data Referensi holds Dokumen then Posisi, on one permission', () => {
+  test('Data Referensi holds Kandidat, then Dokumen and Posisi on one permission', () => {
     assert.deepEqual(
       reference.items.map((i) => [i.label, i.href, i.permission]),
       [
+        ['Kandidat', '/candidates', 'candidates.view'],
         ['Dokumen', '/job-profiles', 'job_profiles.view'],
         ['Posisi', '/posisi', 'job_profiles.view'],
       ],
@@ -88,8 +89,11 @@ describe('TC-NAV Data Referensi menus', () => {
   });
 
   test('each menu lights up on its own sections only', () => {
-    const dokumen = reference.items[0]!;
-    const posisi = reference.items[1]!;
+    // By href, not by position: the group's order is a layout decision.
+    const dokumen = reference.items.find((i) => i.href === '/job-profiles')!;
+    const posisi = reference.items.find((i) => i.href === '/posisi')!;
+    const kandidat = reference.items.find((i) => i.href === '/candidates')!;
+    for (const p of ['/job-profiles', '/posisi/job-family']) assert.equal(isNavItemActive(kandidat, p), false, p);
     for (const p of ['/job-profiles', '/job-profiles/match', '/job-profiles/kamus']) {
       assert.equal(isNavItemActive(dokumen, p), true, p);
       assert.equal(isNavItemActive(posisi, p), false, p);

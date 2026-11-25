@@ -15,7 +15,6 @@ import {
   RefreshCw,
   FileText,
   UserCog,
-  KeyRound,
   Trophy,
   Network,
   type LucideIcon,
@@ -23,6 +22,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { TenantSwitcher } from '@/components/tenant-switcher';
+import type { TenantOption } from '@/lib/tenant-shared';
 import { useState } from 'react';
 import { ScrollArea } from './ui/scroll-area';
 import {
@@ -48,14 +48,16 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   '/governance': Settings,
   '/settings/sync': RefreshCw,
   '/settings/users': UserCog,
-  '/settings/security': KeyRound,
 };
 
 export function SidebarNav({
   tenantSlug,
+  tenants,
   permissions = [],
 }: {
   tenantSlug: string;
+  /** Live companies for the header dropdown (lib/tenant.ts: listTenants). */
+  tenants: TenantOption[];
   /** Current user's RBAC permissions — nav items outside them are hidden. */
   permissions?: string[];
 }) {
@@ -105,7 +107,11 @@ export function SidebarNav({
       {/* Tenant switcher */}
       {!collapsed && (
         <div className="shrink-0 border-b border-sidebar-border/70 px-2.5 py-2.5">
-          <TenantSwitcher currentSlug={tenantSlug} />
+          <TenantSwitcher
+            currentSlug={tenantSlug}
+            tenants={tenants}
+            canManage={allowed.has('sync.manage')}
+          />
         </div>
       )}
 

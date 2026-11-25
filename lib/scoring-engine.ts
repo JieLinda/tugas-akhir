@@ -13,7 +13,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
 import { ensureLocalUser } from "@/lib/pulse-data";
-import { getCurrentTenantId, TENANTS } from "@/lib/tenant";
+import { getCurrentTenantId, listAllTenants, liveTenantIdSet, tenantNameMap } from "@/lib/tenant";
 import type { ReadinessLevel, PositionCandidate } from "@/lib/talent-data";
 import {
   getProgramTemplate,
@@ -46,6 +46,7 @@ import {
 import { normalizeFilterTree } from "@/lib/filter-rules";
 import { readinessLabelForRow } from "@/lib/readiness-label";
 import { RERUN_IDEMPOTENCY_WINDOW_SECONDS, rerunRequestKey } from "@/lib/rerun-request-key";
+import { inheritExclusionsStatement } from "@/lib/rerun-exclusions";
 import { logAudit } from "@/lib/audit";
 import { buildDerivedRunLabel, clampRunLabel } from "@/lib/run-label";
 import { formatHavQuadrant } from "@/lib/hav-quadrant";
@@ -55,12 +56,8 @@ import { runsOfCurrentMode, sessionsOfCurrentMode } from "@/lib/demo/run-mode";
 import { liveCandidate } from "@/lib/candidate-visibility";
 import { primeCompetencyNames } from "@/lib/kamus-name-match-actions";
 import { formatDate } from '@/lib/datetime';
-import {
-  decryptCandidateDetailsSnapshot,
-  decryptCandidateRows,
-  decryptCandidateValue,
-} from "@/lib/candidate-crypto";
 import { demoInitialsById, demoScrub } from "@/lib/demo/names";
+import { disciplineLabel as sharedDisciplineLabel } from '@/lib/candidate-labels';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -295,14 +292,10 @@ function getReadinessLevel(score: number): string {
   }
 }
 
-function disciplineLabel(value: string | null) {
-  const map: Record<string, string> = {
-    clear: "Bersih",
-    warning: "Warning",
-    sanction: "Sanksi aktif",
-  };
-  return map[value ?? ""] ?? "-";
-}
+// The shared label (lib/candidate-labels.ts). The private copy that stood here
+// knew only the old lower-case clear/warning/sanction forms, so every synced
+// status — 'CLEAR', 'ST', 'SP3' … — rendered as "-" on a run's result rows.
+const disciplineLabel = sharedDisciplineLabel;
 
 function mcuLabel(value: string | null) {
   const map: Record<string, string> = {
@@ -555,7 +548,7 @@ async function buildPoolFromCandidateIds(
   };
 
   // Demo mode: OFF candidates dropped and ON ones read as their demo copy.
-  const visibleRows = await forCurrentMode(decryptCandidateRows(candidateRows), (c) => c.id, { onlyOn: true });
+  const visibleRows = await forCurrentMode(candidateRows, (c) => c.id, { onlyOn: true });
   return visibleRows.filter((candidate) => {
     // Exclude the current incumbents from the candidate pool, then the grade gate.
     const incumbent = isIncumbent(candidate);
@@ -627,7 +620,7 @@ export async function startTournamentSessionAction(
   // Business units contributing candidates to this run. The current tenant is
   // always included; extra units must be valid, known tenants. Order-stable and
   // de-duplicated, current tenant first.
-  const validTenantIds = new Set(TENANTS.map((t) => t.id));
+  const validTenantIds = await liveTenantIdSet();
   const includedTenantIds = Array.from(
     new Set([
       tenantId,
@@ -1128,7 +1121,7 @@ export async function searchAddableCandidatesAction(input: {
   const q = (input.query ?? "").trim();
   const limit = Math.min(Math.max(input.limit ?? 50, 1), 100);
   const tenantFilter =
-    input.tenantId && TENANTS.some((t) => t.id === input.tenantId)
+    input.tenantId && (await liveTenantIdSet()).has(input.tenantId)
       ? input.tenantId
       : null;
 
@@ -1140,9 +1133,7 @@ export async function searchAddableCandidatesAction(input: {
   if (excludeIds.length > 0)
     conditions.push(notInArray(schema.candidates.id, excludeIds));
 
-  // name / current_position / department are encrypted at rest, so the ILIKE
-  // search and the name sort must happen after decryption in the application
-  // layer — fetch the live set, filter, sort and paginate here.
+  // Search, sort and paginate in the application layer over the live set.
   const rows = await db
     .select({
       id: schema.candidates.id,
@@ -1161,8 +1152,8 @@ export async function searchAddableCandidatesAction(input: {
       .map((id) => id?.trim().toUpperCase())
       .filter((id): id is string => Boolean(id)),
   );
-  const tenantName = new Map(TENANTS.map((t) => [t.id, t.name]));
-  return decryptCandidateRows(rows)
+  const tenantName = await tenantNameMap();
+  return rows
     .filter((r) => {
       const eid = r.employeeId?.trim().toUpperCase();
       return !(eid && excludeEids.has(eid));
@@ -1210,6 +1201,14 @@ export type RunExclusionEntry = {
   note: string | null;
   excludedAt: Date;
   excludedByName: string | null;
+  /**
+   * Set when the mark was inherited from an ancestor run as this
+   * "Tambah Kandidat Pembanding" child was created — the run where the forum
+   * made it (drizzle/0102). Null: marked on this run.
+   */
+  inheritedFromRunId: string | null;
+  /** That run's label, for "diwarisi dari …". */
+  inheritedFromRunLabel: string | null;
 };
 
 const EXCLUSION_REASON_LABELS: Record<RunExclusionReason, string> = {
@@ -1239,11 +1238,17 @@ export async function getRunExclusionsAction(
       note: schema.scoringRunExclusions.note,
       excludedAt: schema.scoringRunExclusions.excludedAt,
       excludedByName: schema.users.name,
+      inheritedFromRunId: schema.scoringRunExclusions.inheritedFromRunId,
+      inheritedFromRunLabel: schema.scoringRuns.label,
     })
     .from(schema.scoringRunExclusions)
     .leftJoin(
       schema.users,
       eq(schema.users.id, schema.scoringRunExclusions.excludedBy),
+    )
+    .leftJoin(
+      schema.scoringRuns,
+      eq(schema.scoringRuns.id, schema.scoringRunExclusions.inheritedFromRunId),
     )
     .where(
       and(
@@ -1259,6 +1264,8 @@ export async function getRunExclusionsAction(
     note: r.note,
     excludedAt: r.excludedAt,
     excludedByName: r.excludedByName ?? null,
+    inheritedFromRunId: r.inheritedFromRunId ?? null,
+    inheritedFromRunLabel: r.inheritedFromRunLabel ?? null,
   }));
 }
 
@@ -1312,6 +1319,35 @@ export async function setRunExclusionAction(
     .limit(1);
   if (!candidate) throw new Error("Kandidat tidak ditemukan.");
 
+  // The mark is about a person IN this run. A candidate the run never ranked
+  // (a forged request, a stale tab after switching runs) would otherwise get a
+  // mark — and an audit line naming them — on a ranking they are not part of.
+  // Membership is the run's own pool snapshot, or its result rows for runs from
+  // before the snapshot existed. Undoing needs only the mark itself to exist.
+  if (excluded) {
+    const member = await db.execute(sql`
+      SELECT 1 FROM scoring_run_pool_aspects WHERE run_id = ${runId} AND candidate_id = ${candidateId}
+      UNION ALL
+      SELECT 1 FROM analysis_results WHERE run_id = ${runId} AND candidate_id = ${candidateId}
+      LIMIT 1
+    `);
+    if ((member.rows as unknown[]).length === 0)
+      throw new Error("Kandidat ini tidak ada di run ini, sehingga tidak bisa ditandai dikecualikan.");
+  } else {
+    const [mark] = await db
+      .select({ id: schema.scoringRunExclusions.id })
+      .from(schema.scoringRunExclusions)
+      .where(
+        and(
+          eq(schema.scoringRunExclusions.runId, runId),
+          eq(schema.scoringRunExclusions.candidateId, candidateId),
+          eq(schema.scoringRunExclusions.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+    if (!mark) throw new Error("Kandidat ini tidak bertanda dikecualikan di run ini.");
+  }
+
   if (excluded) {
     await db
       .insert(schema.scoringRunExclusions)
@@ -1321,7 +1357,8 @@ export async function setRunExclusionAction(
           schema.scoringRunExclusions.runId,
           schema.scoringRunExclusions.candidateId,
         ],
-        set: { reason, note, excludedBy: userId, excludedAt: new Date() },
+        // Re-marking makes it this run's own decision, no longer an inherited one.
+        set: { reason, note, excludedBy: userId, excludedAt: new Date(), inheritedFromRunId: null },
       });
   } else {
     await db
@@ -1342,8 +1379,8 @@ export async function setRunExclusionAction(
     entityId: runId,
     action: "run_scoring",
     summary: excluded
-      ? `${decryptCandidateValue(candidate.name)} ditandai dikecualikan (${EXCLUSION_REASON_LABELS[reason]}${note ? `: ${note}` : ""}). Tidak memengaruhi angka: skor dan peringkat run tidak diubah.`
-      : `Tanda dikecualikan pada ${decryptCandidateValue(candidate.name)} dibatalkan (alasan: ${note}).`,
+      ? `${candidate.name} ditandai dikecualikan (${EXCLUSION_REASON_LABELS[reason]}${note ? `: ${note}` : ""}). Tidak memengaruhi angka: skor dan peringkat run tidak diubah.`
+      : `Tanda dikecualikan pada ${candidate.name} dibatalkan (alasan: ${note}).`,
     diff: null,
   });
 
@@ -1513,6 +1550,20 @@ export async function deleteScoringRunAction(formData: FormData) {
   revalidatePath(`/positions/${existing.positionId}`);
 }
 
+/**
+ * A ranked row's stored candidate snapshot. Older snapshots can hold
+ * `yearsOfService` as text; it is read back as a number.
+ */
+function parseResultSnapshot(details: string): PositionCandidate {
+  const parsed = JSON.parse(details) as PositionCandidate;
+  const years = (parsed as { yearsOfService?: unknown }).yearsOfService;
+  if (typeof years === "string") {
+    const num = Number(years);
+    if (!Number.isNaN(num)) parsed.yearsOfService = num;
+  }
+  return parsed;
+}
+
 export async function getScoringRunResults(runId: string) {
   if (!isUuid(runId)) return [];
   // A server action is callable with any id: scope to the reader's tenant
@@ -1582,7 +1633,7 @@ export async function getScoringRunResults(runId: string) {
   // the RUN scored (recordedHavQuadrant), so today's HAV is never laid over it.
   const candidatesById = new Map(
     // Demo mode: the live values laid over a ranked row are the demo copy's.
-    (await forCurrentMode(decryptCandidateRows(candidateRows), (c) => c.id, { onlyOn: false })).map((c) => [c.id, c]),
+    (await forCurrentMode(candidateRows, (c) => c.id, { onlyOn: false })).map((c) => [c.id, c]),
   );
   const technicalByCandidateId = new Map<string, typeof technicalRows>();
   for (const row of technicalRows) {
@@ -1595,11 +1646,7 @@ export async function getScoringRunResults(runId: string) {
     ...row,
     finalScore: Number(row.finalScore),
     details: (() => {
-      // The stored snapshot may hold encrypted person fields for runs finalized
-      // before/when the key was unavailable — decrypt them for display.
-      const parsed = row.details
-        ? decryptCandidateDetailsSnapshot(JSON.parse(row.details) as PositionCandidate)
-        : null;
+      const parsed = row.details ? parseResultSnapshot(row.details) : null;
       // The quadrant the RUN scored — never the candidate's HAV today
       // (`recordedHavQuadrant` in lib/run-score-breakdown.ts says why).
       const hav = recordedHavQuadrant(parsed as Record<string, unknown> | null);
@@ -1665,10 +1712,9 @@ export async function getScoringRunResults(runId: string) {
 
       return {
         ...enrichedBase,
-        // Live data wins for identity — a snapshot written by a pre-decryption
-        // or locked scoring-service may carry null/ciphertext here. The (now
-        // decrypted) snapshot name remains the fallback for candidates that no
-        // longer exist in the candidates table.
+        // Live data wins for identity — an older snapshot may carry null here.
+        // The snapshot name remains the fallback for candidates that no longer
+        // exist in the candidates table.
         name: candidate.name ?? enrichedBase.name,
         currentPosition: candidate.currentPosition ?? enrichedBase.currentPosition,
         yearsOfService: candidate.yearsExperience != null ? Number(candidate.yearsExperience) : enrichedBase.yearsOfService,
@@ -1727,6 +1773,8 @@ export type StartRerunResult = {
   referenceDate: string;
   /** True when an identical request moments earlier already created this run (FR-RR-13). */
   reused: boolean;
+  /** Exclusion marks copied from the parent onto the child (drizzle/0102). */
+  inheritedExclusions: number;
   /** Did the scoring service take it, or is it waiting in the queue? */
   dispatch: ScoringDispatch;
 };
@@ -1820,9 +1868,11 @@ type RerunParent = NonNullable<Awaited<ReturnType<typeof loadRerunParent>>>;
  * is its parent except for the candidate set, and the unit scope is one of the
  * parent's rules (NFR-RR-07).
  */
-function rerunScopeTenantIds(parent: RerunParent): string[] {
+async function rerunScopeTenantIds(parent: RerunParent): Promise<string[]> {
   const fs = (parent.filterSummary as ScoringRunFilterSummary | null) ?? null;
-  const known = new Set(TENANTS.map((t) => t.id));
+  // Every company ever known, removed ones included: the scope is a rule of the
+  // PARENT run, and a later removal must not change what its child may draw from.
+  const known = new Set((await listAllTenants()).map((t) => t.id));
   const units = (fs?.includedTenantIds ?? []).filter((id) => known.has(id));
   return units.length > 0 ? units : [parent.tenantId];
 }
@@ -1849,10 +1899,10 @@ async function evaluateAgainstParentRules(
   if (ids.length === 0) return { byId, flagged: [], rulesSource: "none" };
   const fs = (parent.filterSummary as ScoringRunFilterSummary | null) ?? null;
 
-  const units = rerunScopeTenantIds(parent);
+  const units = await rerunScopeTenantIds(parent);
   const minGrade = parseGradeNumeric(fs?.minGradeId ?? null);
   const maxGrade = parseGradeNumeric(fs?.maxGradeId ?? null);
-  const tenantName = new Map(TENANTS.map((t) => [t.id, t.name]));
+  const tenantName = await tenantNameMap();
   for (const id of ids) {
     const row = rows.get(id);
     const entry = byId.get(id)!;
@@ -1941,12 +1991,11 @@ async function loadCandidateFacts(ids: string[]) {
     })
     .from(schema.candidates)
     .where(inArray(schema.candidates.id, ids));
-  const decrypted = decryptCandidateRows(rows);
-  if (!(await isDemoMode())) return decrypted;
+  if (!(await isDemoMode())) return rows;
   // Demo mode: an OFF candidate is as if deleted — the classifier then skips
   // them with the deleted reason — and the ON ones read as their demo copy.
   const on = await loadDemoOnIds(ids);
-  const shown = await forCurrentMode(decrypted, (r) => r.id, { onlyOn: false });
+  const shown = await forCurrentMode(rows, (r) => r.id, { onlyOn: false });
   return shown.map((r) => (on.has(r.id) ? r : { ...r, deletedAt: r.deletedAt ?? new Date(0) }));
 }
 
@@ -2182,7 +2231,7 @@ async function startRerunActionImpl(input: {
   // A double click, or a resubmission of the same request, must not create a
   // second child. The advisory lock serialises two concurrent submissions of
   // the same key; the second one then finds the first one's run.
-  let created: { runId: string; sessionId: string; reused: boolean };
+  let created: { runId: string; sessionId: string; reused: boolean; inheritedExclusions: number };
   try {
     created = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${requestKey}, 0))`);
@@ -2199,7 +2248,7 @@ async function startRerunActionImpl(input: {
          LIMIT 1
       `);
       const hit = (prior.rows as { runId: string; sessionId: string | null }[])[0];
-      if (hit) return { runId: hit.runId, sessionId: hit.sessionId ?? "", reused: true };
+      if (hit) return { runId: hit.runId, sessionId: hit.sessionId ?? "", reused: true, inheritedExclusions: 0 };
 
       const [session] = await tx
         .insert(schema.tournamentSessions)
@@ -2248,12 +2297,26 @@ async function startRerunActionImpl(input: {
         .update(schema.tournamentSessions)
         .set({ runId: run!.id, updatedAt: new Date() })
         .where(eq(schema.tournamentSessions.id, session!.id));
-      return { runId: run!.id, sessionId: session!.id, reused: false };
+
+      // The parent's exclusion marks come with it (drizzle/0102) — see
+      // lib/rerun-exclusions.ts for why and how.
+      const inherited = await tx.execute(inheritExclusionsStatement(run!.id, parent.id, tenantId));
+      return {
+        runId: run!.id,
+        sessionId: session!.id,
+        reused: false,
+        inheritedExclusions: (inherited.rows as unknown[]).length,
+      };
     });
   } catch (err) {
     if (isMissingColumn(err, "rerun_reason")) {
       throw new Error(
         "Database belum diperbarui: kolom scoring_runs.rerun_reason belum ada. Terapkan migrasi drizzle/0086_scoring_run_rerun_reason.sql, lalu coba lagi.",
+      );
+    }
+    if (isMissingColumn(err, "inherited_from_run_id")) {
+      throw new Error(
+        "Database belum diperbarui: kolom scoring_run_exclusions.inherited_from_run_id belum ada. Terapkan migrasi drizzle/0102_inherited_run_exclusions.sql, lalu coba lagi.",
       );
     }
     throw err;
@@ -2297,6 +2360,9 @@ async function startRerunActionImpl(input: {
         `. Alasan: ${reason}. ${spec.expectation}` +
         (outOfRange.length > 0
           ? ` ${outOfRange.length} kandidat di luar rentang grade ditambahkan dengan konfirmasi.`
+          : "") +
+        (created.inheritedExclusions > 0
+          ? ` ${created.inheritedExclusions} tanda pengecualian dari run induk ikut diwariskan.`
           : ""),
       diff: null,
     });
@@ -2318,6 +2384,7 @@ async function startRerunActionImpl(input: {
     positionBasisSource: frozen.positionBasis ? "parent" : "live_fallback",
     referenceDate: frozen.referenceDate,
     reused: created.reused,
+    inheritedExclusions: created.inheritedExclusions,
     dispatch,
   };
 }
@@ -2432,12 +2499,12 @@ async function searchRerunCandidatesActionImpl(input: {
   const tenantId = await getCurrentTenantId();
   const parent = await loadRerunParent(input.baseRunId, tenantId);
   if (!parent) return { hits: [], scopeTenantIds: [] };
-  const scope = rerunScopeTenantIds(parent);
+  const scope = await rerunScopeTenantIds(parent);
   const q = (input.query ?? "").trim().toLowerCase();
   const limit = Math.min(Math.max(input.limit ?? 50, 1), 100);
 
-  // name / position / department are encrypted at rest, so matching happens
-  // after decryption, over the live candidates of the parent's units only.
+  // Matching happens in the application layer, over the live candidates of the
+  // parent's units only.
   const rows = await db
     .select({
       id: schema.candidates.id,
@@ -2450,14 +2517,14 @@ async function searchRerunCandidatesActionImpl(input: {
     })
     .from(schema.candidates)
     .where(and(liveCandidate(), inArray(schema.candidates.tenantId, scope)));
-  const tenantName = new Map(TENANTS.map((t) => [t.id, t.name]));
+  const tenantName = await tenantNameMap();
   // Demo mode: only ON candidates can be added, read as their demo copy, and
   // the NPK is neither searchable nor returned (it is masked everywhere).
   const demo = await isDemoMode();
   // …and searched / sorted on the initials it is shown as, so a real name typed
   // into the box finds nobody instead of revealing whose initials those are.
   const demoInitials = await demoInitialsById();
-  const matched = (await forCurrentMode(decryptCandidateRows(rows), (r) => r.id, { onlyOn: true }))
+  const matched = (await forCurrentMode(rows, (r) => r.id, { onlyOn: true }))
     .map((r) => (demoInitials ? { ...r, name: demoInitials.get(r.id) ?? r.name } : r))
     .filter((r) => {
       if (!q) return true;
@@ -2518,6 +2585,8 @@ export type RerunPreview =
       /** Effective weights in percent over the active criteria. */
       effectiveWeights: { key: string; percent: number }[];
       droppedCriteria: { key: string; reason: string }[];
+      /** Exclusion marks on the parent; the child inherits them (drizzle/0102). */
+      parentExclusionCount: number;
     };
 
 /**
@@ -2570,12 +2639,23 @@ export async function getRerunPreviewAction(baseRunId: string): Promise<RerunPre
       anchorsSource: frozen.anchors.source,
       positionBasisSource: frozen.positionBasis ? "parent" : "live_fallback",
       positionBasisJobProfile: frozen.positionBasis?.jobProfile?.positionName ?? null,
-      scopeTenantIds: rerunScopeTenantIds(p),
+      scopeTenantIds: await rerunScopeTenantIds(p),
       effectiveWeights:
         sum > 0
           ? active.map((k) => ({ key: k, percent: ((frozen.ahp.weights?.[k] ?? 0) / sum) * 100 }))
           : [],
       droppedCriteria: frozen.ahp.droppedCriteria ?? [],
+      parentExclusionCount: (
+        await db
+          .select({ id: schema.scoringRunExclusions.id })
+          .from(schema.scoringRunExclusions)
+          .where(
+            and(
+              eq(schema.scoringRunExclusions.runId, p.id),
+              eq(schema.scoringRunExclusions.tenantId, tenantId),
+            ),
+          )
+      ).length,
     };
   } catch (err) {
     log("getRerunPreviewAction.failed", { baseRunId, error: String(err) });

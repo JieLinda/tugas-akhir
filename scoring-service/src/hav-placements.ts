@@ -1,4 +1,4 @@
-// The manual tier of the HAV in force: Talent Mapping placements, decrypted.
+// The manual tier of the HAV in force: Talent Mapping placements.
 // See hav-effective.ts for the precedence and the web app's lib/hav-placements.ts
 // for its twin.
 //
@@ -15,7 +15,6 @@
 // run then reports every HAV as upload/formula, which is exactly what it used.
 
 import { query } from "./db/postgres.js";
-import { decryptField, ensureUnlocked } from "./services/crypto.js";
 import { canonicalQuadrant, resolveEffectiveHav, type EffectiveHav, type HavSource } from "./hav-effective.js";
 
 let warnedUnavailable = false;
@@ -43,7 +42,6 @@ export async function loadManualHavQuadrants(candidateIds: string[]): Promise<Ma
   const out = new Map<string, number>();
   const ids = Array.from(new Set(candidateIds.filter(Boolean)));
   if (ids.length === 0) return out;
-  await ensureUnlocked();
   let rows: { candidateId: string; quadrant: string }[];
   try {
     try {
@@ -64,9 +62,9 @@ export async function loadManualHavQuadrants(candidateIds: string[]): Promise<Ma
     return out;
   }
   for (const row of rows) {
-    const quadrant = canonicalQuadrant(decryptField(row.quadrant));
+    const quadrant = canonicalQuadrant(row.quadrant);
     if (quadrant != null) out.set(row.candidateId, quadrant);
-    else console.warn(`[hav-placements] placement for candidate ${row.candidateId} could not be opened`);
+    else console.warn(`[hav-placements] placement for candidate ${row.candidateId} holds no valid quadrant`);
   }
   return out;
 }
@@ -99,7 +97,7 @@ export async function loadHavFormulaPins(candidateIds: string[]): Promise<Set<st
 }
 
 /**
- * Fold the HAV in force into decrypted candidate rows: `havQuadrant` becomes the
+ * Fold the HAV in force into candidate rows: `havQuadrant` becomes the
  * quadrant in force (as the string the scorers expect), `havSource` says where it
  * came from. The HAV scorer reads `havQuadrant` unchanged.
  */

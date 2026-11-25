@@ -15,8 +15,8 @@
  *    thing the other two formats cannot give.
  *
  * Everything runs in the browser off the history the panel already holds — there
- * is no server round-trip and therefore no second copy of the permission and
- * decryption rules in `lib/chat-actions.ts` to keep in step.
+ * is no server round-trip and therefore no second copy of the permission rules in
+ * `lib/chat-actions.ts` to keep in step.
  */
 
 import type { Paragraph as DocxParagraph, Table as DocxTable } from 'docx';
@@ -189,15 +189,6 @@ export async function exportChatPdf(payload: ChatExportPayload) {
         size: 9,
         style: 'italic',
         color: [37, 99, 235],
-        indent: 10,
-        gapAfter: 2,
-      });
-    }
-    if (entry.unreadable) {
-      writeText('Pesan ini tidak dapat didekripsi saat riwayat dibaca.', {
-        size: 9,
-        style: 'italic',
-        color: [185, 28, 28],
         indent: 10,
         gapAfter: 2,
       });
@@ -567,21 +558,6 @@ export async function exportChatDocx(payload: ChatExportPayload) {
         }),
       );
     }
-    if (entry.unreadable) {
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: 'Pesan ini tidak dapat didekripsi saat riwayat dibaca.',
-              italics: true,
-              size: 18,
-              color: 'B91C1C',
-            }),
-          ],
-          spacing: { after: GAP },
-        }),
-      );
-    }
 
     const rendered = blocksToDocx(entry.blocks, listInstance);
     listInstance = rendered.listInstance;
@@ -669,7 +645,6 @@ export async function exportChatWorkbook(payload: ChatExportPayload) {
       Peran: entry.speaker,
       'Data Terlampir': entry.attachment ?? '',
       Pesan: excelCell(entry.plainText),
-      Catatan: entry.unreadable ? 'Tidak dapat didekripsi' : '',
     })),
   );
   conversationSheet['!cols'] = [
@@ -678,7 +653,6 @@ export async function exportChatWorkbook(payload: ChatExportPayload) {
     { wch: 14 },
     { wch: 28 },
     { wch: 110 },
-    { wch: 22 },
   ];
   XLSX.utils.book_append_sheet(workbook, conversationSheet, 'Percakapan');
 

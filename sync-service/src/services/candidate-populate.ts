@@ -1,6 +1,5 @@
 import { config } from "../config.js";
 import { query as pgQuery, execute, pool } from "../db/postgres.js";
-import { resolveWriteMode, sealValue } from "./crypto.js";
 import {
   canonicalHavQuadrant,
   loadPriorHavInputs,
@@ -9,17 +8,19 @@ import {
   type HavAutoChangeOrigin,
 } from "./hav-supersede.js";
 import { candidateSyncHavEvent } from "./hav-order.js";
+import { npkKeySql } from "./npk.js";
+import { DISCIPLINE_STATUS_SQL } from "./discipline-status.js";
 import type { SyncResult } from "../types.js";
 
-// ── Derive → encrypt → upsert ──────────────────────────────────
-// The candidates columns that hold a person's data are encrypted at rest
-// (AES-256-GCM envelope, "v1:…" wire format, mirrored in the web app's
-// lib/candidate-crypto.ts). Postgres cannot compute on those columns, so the
-// single SQL upsert that used to derive AND write them in one statement is
-// split in two: DERIVE_SQL returns the plaintext rows for one company, the
-// application layer seals the person-scoped fields via sealValue(), and
-// CANDIDATE_INSERT upserts the batch. Column ordering here MUST match the
-// values pushed in populateCandidates below.
+// "Sync-service … mengonsolidasikan data menjadi objek kandidat 
+
+// SQL to derive candidate data for a specific company
+// tabel sync_* → 1 
+/** Stored text form of a derived value: empty or missing → NULL. */
+function textOrNull(value: string | number | null | undefined): string | null {
+  return value == null || value === "" ? null : String(value);
+}
+
 
 const DERIVE_SQL = `
   WITH
@@ -38,75 +39,45 @@ const DERIVE_SQL = `
     WHERE company_id = $1
     GROUP BY employee_id
   ),
+  -- Disciplinary, education and personal data are keyed by the NORMALISED NPK
+  -- (npk.ts), like HAV and MCU below. These tables store the spelling Data
+  -- Karyawan holds, but a row uploaded BEFORE the employee existed keeps the
+  -- spelling it was typed with ("370" vs "0370"), and an exact join would never
+  -- connect it. Grouping by the key also folds two spellings of one person.
   disc_status AS (
       SELECT
-          employee_id,
-          CASE
-
-              WHEN EXISTS (
-                  SELECT 1
-                  FROM sync_disciplinary d2
-                  WHERE d2.employee_id = d.employee_id
-                    AND d2.company_id = d.company_id
-                    AND d2.warning_level = 5
-              )
-              THEN 'SP_FIRST_LAST'
-
-              WHEN EXISTS (
-                  SELECT 1
-                  FROM sync_disciplinary d2
-                  WHERE d2.employee_id = d.employee_id
-                    AND d2.company_id = d.company_id
-                    AND d2.warning_level = 3
-              )
-              THEN 'SP3'
-
-              WHEN EXISTS (
-                  SELECT 1
-                  FROM sync_disciplinary d2
-                  WHERE d2.employee_id = d.employee_id
-                    AND d2.company_id = d.company_id
-                    AND d2.warning_level = 2
-                    AND d2.expiry_date >= NOW()
-              )
-              THEN 'ACTIVE_SP'
-
-              WHEN EXISTS (
-                  SELECT 1
-                  FROM sync_disciplinary d2
-                  WHERE d2.employee_id = d.employee_id
-                    AND d2.company_id = d.company_id
-                    AND d2.warning_level = 2
-                    AND d2.expiry_date < NOW()
-                    AND d2.expiry_date >= NOW() - INTERVAL '2 years'
-              )
-              THEN 'SP_UNDER_2_YEARS'
-
-              -- Warning level 1 = ST (Surat Teguran) — a MINOR violation that
-              -- keeps the employee Qualified per the methodology document's
-              -- categorization table (distinct from SP2's warning level 2).
-              WHEN EXISTS (
-                  SELECT 1
-                  FROM sync_disciplinary d2
-                  WHERE d2.employee_id = d.employee_id
-                    AND d2.company_id = d.company_id
-                    AND d2.warning_level = 1
-              )
-              THEN 'ST'
-
-              ELSE 'CLEAR'
-          END AS discipline_status
-
-      FROM sync_disciplinary d
+          ${npkKeySql("employee_id")} AS npk_key,
+          ${DISCIPLINE_STATUS_SQL} AS discipline_status
+      FROM sync_disciplinary
       WHERE company_id = $1
-      GROUP BY employee_id, company_id
+      GROUP BY ${npkKeySql("employee_id")}
   ),
   top_edu AS (
-    SELECT DISTINCT ON (employee_id)
-      employee_id, education_level, education_field
+    SELECT DISTINCT ON (${npkKeySql("employee_id")})
+      ${npkKeySql("employee_id")} AS npk_key, education_level, education_field
     FROM sync_education
     WHERE education_level_rank IS NOT NULL AND company_id = $1
-    ORDER BY employee_id, education_level_rank DESC
+    ORDER BY ${npkKeySql("employee_id")}, education_level_rank DESC
+  ),
+  personal_by_npk AS (
+    SELECT DISTINCT ON (${npkKeySql("employee_id")}) ${npkKeySql("employee_id")} AS npk_key, birth_date
+    FROM sync_employee_personal
+    WHERE company_id = $1
+    ORDER BY ${npkKeySql("employee_id")}, synced_at DESC NULLS LAST, id DESC
+  ),
+  -- HAV keyed by the normalised NPK (npk.ts), so "5123" and "05123" are one
+  -- person — the same identity applyHavUploadChanges matches on. Newest row
+  -- wins if both spellings were ever stored.
+  hav_by_npk AS (
+    SELECT DISTINCT ON (${npkKeySql("npk")}) ${npkKeySql("npk")} AS npk_key, quadrant
+    FROM sync_hav
+    ORDER BY ${npkKeySql("npk")}, synced_at DESC NULLS LAST, id DESC
+  ),
+  -- MCU keyed the same way as HAV above; newest row wins if both spellings exist.
+  mcu_by_npk AS (
+    SELECT DISTINCT ON (${npkKeySql("npk")}) ${npkKeySql("npk")} AS npk_key, status, kesimpulan_raw, keterangan
+    FROM sync_mcu
+    ORDER BY ${npkKeySql("npk")}, synced_at DESC NULLS LAST, id DESC
   ),
   derived AS (
     SELECT DISTINCT ON (e.employee_id)
@@ -142,19 +113,20 @@ const DERIVE_SQL = `
       bc.keterangan AS behavior_notes,
       -- Birth date, not age: age is derived at render time so it never goes
       -- stale between syncs. Formatted here because the candidate column is
-      -- encrypted text, not a date.
+      -- text, not a date.
       to_char(pi.birth_date, 'YYYY-MM-DD') AS birth_date,
       CONCAT('https://hr.mpm-motor.com/MPM/uploaded/EmployeePersonalInfo/', e.employee_id, '.jpg') AS photo_url
     FROM sync_employees e
     INNER JOIN sync_employee_positions sep ON sep.employee_id = LPAD(e.employee_id::text, 5, '0') AND sep.company_id = e.company_id
     INNER JOIN sync_positions p ON p.position_id = sep.position_id AND p.company_id = sep.company_id
-    LEFT JOIN disc_status   ds ON ds.employee_id = e.employee_id
-    LEFT JOIN latest_perf   lp ON lp.employee_id = LPAD(e.employee_id::text, 5, '0') AND e.company_id = e.company_id
-    LEFT JOIN top_edu       te ON te.employee_id = e.employee_id
-    LEFT JOIN sync_hav      h ON h.npk = e.employee_id
-    LEFT JOIN sync_mcu      m ON m.npk = e.employee_id
+    LEFT JOIN disc_status   ds ON ds.npk_key = ${npkKeySql("e.employee_id")}
+    -- latest_perf is already restricted to company $1 (as e is), so NPK alone joins it.
+    LEFT JOIN latest_perf   lp ON lp.employee_id = LPAD(e.employee_id::text, 5, '0')
+    LEFT JOIN top_edu       te ON te.npk_key = ${npkKeySql("e.employee_id")}
+    LEFT JOIN hav_by_npk    h ON h.npk_key = ${npkKeySql("e.employee_id")}
+    LEFT JOIN mcu_by_npk    m ON m.npk_key = ${npkKeySql("e.employee_id")}
     LEFT JOIN sync_behavior_competencies bc ON bc.company_id = e.company_id AND bc.employee_id = LPAD(e.employee_id::text, 5, '0')
-    LEFT JOIN sync_employee_personal pi ON pi.company_id = e.company_id AND pi.employee_id = e.employee_id
+    LEFT JOIN personal_by_npk pi ON pi.npk_key = ${npkKeySql("e.employee_id")}
     WHERE e.company_id = $1
       AND sep.primary_position = true
       AND (sep.valid_from <= NOW() OR sep.valid_from IS NULL) AND (sep.valid_to IS NULL OR sep.valid_to >= NOW())
@@ -488,14 +460,43 @@ export async function populateCandidates(
      * workbook upload (`pa_ba_upload`, routes/sync.ts).
      */
     havOrigin?: Extract<HavAutoChangeOrigin, "candidate_sync" | "pa_ba_upload">;
+    /**
+     * Only these Company IDs (case/space-insensitive). The run chained after an
+     * upload passes the companies the workbook wrote, so uploading company B's
+     * data never re-derives company A — which would put A back to its sync_*
+     * values and record any PA/BA difference as a "pa_ba_upload" HAV event B's
+     * upload never caused. Absent = every mapped company, as before.
+     */
+    companyIds?: string[];
   } = {},
 ): Promise<SyncResult> {
   const mode: CandidatePopulateMode = options.mode === "rebuild" ? "rebuild" : "upsert";
   const havOrigin = options.havOrigin ?? "candidate_sync";
-  const mappings = await loadCompanyTenantMap(tenantIds);
+  const allMappings = await loadCompanyTenantMap(tenantIds);
+  const wanted = options.companyIds
+    ? new Set(options.companyIds.map((c) => c.trim().toUpperCase()))
+    : null;
+  const mappings = wanted
+    ? allMappings.filter((m) => wanted.has(String(m.company_id).trim().toUpperCase()))
+    : allMappings;
   const filterDesc =
     (tenantIds && tenantIds.length > 0 ? ` [tenantIds=${tenantIds.join(",")}]` : "") +
+    (wanted ? ` [companyIds=${[...wanted].join(",")}]` : "") +
     ` [mode=${mode}]`;
+
+  // A scoped run whose companies have no mapping changed nothing a company can
+  // see: say so, rather than the "add a mapping first" failure below.
+  if (wanted && mappings.length === 0 && allMappings.length > 0) {
+    return {
+      success: true,
+      synced: 0,
+      total: 0,
+      message:
+        wanted.size === 0
+          ? "Tidak ada baris yang berubah; kandidat tidak disinkron ulang."
+          : `Company ID ${[...wanted].join(", ")} belum dipetakan ke Company; kandidat tidak disinkron ulang.`,
+    };
+  }
 
   if (mappings.length === 0) {
     return {
@@ -520,10 +521,6 @@ export async function populateCandidates(
   }
 
   const now = new Date();
-  // Resolve the write policy ONCE per run: candidates carry ~15 encrypted
-  // fields per row, and resolving per value would run an is-active query for
-  // each of them. See resolveWriteMode() in services/crypto.ts.
-  const writeMode = await resolveWriteMode();
   let totalSynced = 0;
   let totalHistorySynced = 0;
   let totalCleared = 0;
@@ -570,23 +567,23 @@ export async function populateCandidates(
           values.push(
             tenant_id,
             r.employee_id,
-            sealValue(writeMode, r.name),
-            sealValue(writeMode, r.grade),
-            sealValue(writeMode, r.discipline_status),
-            sealValue(writeMode, r.performance_grade),
-            sealValue(writeMode, r.education),
-            sealValue(writeMode, r.major),
-            sealValue(writeMode, r.mcu_status),
-            sealValue(writeMode, r.mcu_note),
-            sealValue(writeMode, r.behavior_recommendation),
-            sealValue(writeMode, r.behavior_notes),
-            sealValue(writeMode, r.photo_url),
-            sealValue(writeMode, r.current_position),
-            sealValue(writeMode, r.department),
-            sealValue(writeMode, r.division),
-            sealValue(writeMode, r.years_of_service),
-            sealValue(writeMode, r.hav_quadrant),
-            sealValue(writeMode, r.birth_date),
+            textOrNull(r.name),
+            textOrNull(r.grade),
+            textOrNull(r.discipline_status),
+            textOrNull(r.performance_grade),
+            textOrNull(r.education),
+            textOrNull(r.major),
+            textOrNull(r.mcu_status),
+            textOrNull(r.mcu_note),
+            textOrNull(r.behavior_recommendation),
+            textOrNull(r.behavior_notes),
+            textOrNull(r.photo_url),
+            textOrNull(r.current_position),
+            textOrNull(r.department),
+            textOrNull(r.division),
+            textOrNull(r.years_of_service),
+            textOrNull(r.hav_quadrant),
+            textOrNull(r.birth_date),
             config.syncSystemUserId,
             now,
             now,
@@ -639,7 +636,7 @@ export async function populateCandidates(
               tier: delta.tier,
             });
           }
-          const recorded = await recordAutomaticHavChanges(client, havChanges, writeMode, havOrigin);
+          const recorded = await recordAutomaticHavChanges(client, havChanges, havOrigin);
           totalHavStamped += recorded.stamped;
           totalHavSuperseded += recorded.superseded;
 

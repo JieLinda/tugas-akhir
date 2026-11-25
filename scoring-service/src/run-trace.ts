@@ -2,22 +2,17 @@
 // anchors were measured from (drizzle/0092). The SHAPE lives in
 // run-trace-types.ts, shared with the web app's XLSX export.
 //
-// Two rules, both inherited from how this service treats every other record:
+// A trace NEVER fails a run. Every write here is best-effort and logged — the
+// ranking is the record, the trace only explains it. A database without the
+// 0092 tables therefore keeps scoring exactly as before; the export then says
+// "tidak tercatat" instead of showing numbers.
 //
-//  • A trace NEVER fails a run. Every write here is best-effort and logged — the
-//    ranking is the record, the trace only explains it. A database without the
-//    0092 tables therefore keeps scoring exactly as before; the export then says
-//    "tidak tercatat" instead of showing numbers.
-//
-//  • A trace is candidate data, so it is SEALED with the app data key under the
-//    same three-state rule as every sealed candidate column: plaintext only on
-//    an install that never enabled encryption, ciphertext when unlocked, and NOT
-//    WRITTEN AT ALL when the key is locked. Census rows hold no candidate
-//    identity and are stored as plain jsonb.
+// The payload is stored as plain JSON text. `scoring_run_traces.sealed` is kept
+// for older rows and is always written false (application-level encryption was
+// removed).
 
 import { createHash } from "node:crypto";
 import { execute, query, queryOne } from "./db/postgres.js";
-import { decryptField, ensureUnlocked, isSealed, resolveWriteMode, sealValue } from "./services/crypto.js";
 import { log } from "./llm.js";
 import type { CensusKind, CensusPayloadByKind, CensusRef, EngineTrace } from "./run-trace-types.js";
 
@@ -96,28 +91,6 @@ export async function persistEngineTrace(trace: EngineTrace, tenantId: string): 
   } catch (err) {
     return { ...base, recorded: false, sealed: false, bytes: 0, reason: `Jejak tidak dapat diserialisasi: ${String(err)}` };
   }
-  const mode = await resolveWriteMode().catch(() => "locked" as const);
-  if (mode === "locked") {
-    return {
-      ...base,
-      recorded: false,
-      sealed: false,
-      bytes: json.length,
-      reason:
-        "Enkripsi aktif tetapi kunci data tidak tersedia di scoring-service, jadi jejak (berisi data kandidat) tidak ditulis — tidak pernah sebagai teks biasa.",
-    };
-  }
-  let payload: string;
-  try {
-    // `locked` was handled above, so sealValue either returns the plaintext
-    // (never-initialised install) or the ciphertext; its refusal branch — whose
-    // wording is about medical notes — cannot be reached from here.
-    const sealed = sealValue(mode, json);
-    if (!sealed) throw new Error("hasil penyegelan kosong");
-    payload = sealed;
-  } catch (err) {
-    return { ...base, recorded: false, sealed: false, bytes: json.length, reason: `Jejak gagal disegel: ${String(err)}` };
-  }
   try {
     await execute(
       `INSERT INTO scoring_run_traces (run_id, tenant_id, stage, version, payload, sealed, byte_size)
@@ -129,36 +102,29 @@ export async function persistEngineTrace(trace: EngineTrace, tenantId: string): 
          sealed = EXCLUDED.sealed,
          byte_size = EXCLUDED.byte_size,
          created_at = now()`,
-      [trace.runId, tenantId, trace.version, payload, mode === "encrypt", Buffer.byteLength(json, "utf8")]
+      [trace.runId, tenantId, trace.version, json, false, Buffer.byteLength(json, "utf8")]
     );
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     log("runTrace.persistFailed", { runId: trace.runId, error: reason });
     return { ...base, recorded: false, sealed: false, bytes: json.length, reason: `Jejak gagal disimpan: ${reason}` };
   }
-  return { ...base, recorded: true, sealed: mode === "encrypt", bytes: Buffer.byteLength(json, "utf8"), reason: null };
+  return { ...base, recorded: true, sealed: false, bytes: Buffer.byteLength(json, "utf8"), reason: null };
 }
 
 /**
- * A parent's engine trace, decrypted — a child copies the per-candidate entries
+ * A parent's engine trace — a child copies the per-candidate entries
  * of the candidates it carries, so its own trace stays self-contained even if the
  * parent is deleted later. Null when the parent has none or it cannot be read.
  */
 export async function loadEngineTrace(runId: string): Promise<EngineTrace | null> {
   try {
-    const row = await queryOne<{ payload: string; sealed: boolean }>(
-      `SELECT payload, sealed FROM scoring_run_traces WHERE run_id = $1 AND stage = 'engine' LIMIT 1`,
+    const row = await queryOne<{ payload: string }>(
+      `SELECT payload FROM scoring_run_traces WHERE run_id = $1 AND stage = 'engine' LIMIT 1`,
       [runId]
     );
     if (!row?.payload) return null;
-    let text: string | null = row.payload;
-    if (isSealed(row.payload)) {
-      await ensureUnlocked();
-      const opened = decryptField(row.payload);
-      text = opened == null ? null : String(opened);
-    }
-    if (!text) return null;
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(row.payload);
     return parsed && parsed.stage === "engine" ? (parsed as EngineTrace) : null;
   } catch (err) {
     log("runTrace.loadFailed", { runId, error: err instanceof Error ? err.message : String(err) });

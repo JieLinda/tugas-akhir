@@ -8,7 +8,6 @@ import {
   Info,
   KeyRound,
   Loader2,
-  Lock,
   PlugZap,
   RefreshCw,
   Save,
@@ -241,22 +240,6 @@ export function SourceConnectionsCard({ className }: { className?: string }) {
           </div>
         ) : state ? (
           <>
-            {!state.encryptionUnlocked && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed">
-                <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                <div className="min-w-0">
-                  <p className="font-semibold text-amber-700 dark:text-amber-300">
-                    Enkripsi terkunci — password tidak dapat diubah
-                  </p>
-                  <p className="mt-0.5 text-muted-foreground">
-                    Password baru harus dienkripsi, dan kuncinya belum dibuka. Buka kunci enkripsi di
-                    Tata Kelola bila perlu mengganti password. Kolom lain tetap dapat disimpan seperti
-                    biasa.
-                  </p>
-                </div>
-              </div>
-            )}
-
             {state.effective === null && (
               <div className="flex items-start gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 p-3 text-xs leading-relaxed">
                 <WifiOff className="mt-0.5 h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
@@ -284,7 +267,6 @@ export function SourceConnectionsCard({ className }: { className?: string }) {
                     form={form}
                     effective={state.effective?.[view.sourceKey] ?? null}
                     serviceReachable={state.effective !== null}
-                    encryptionUnlocked={state.encryptionUnlocked}
                     saving={savingKey === view.sourceKey}
                     testing={testingKey === view.sourceKey}
                     busy={savingKey !== null || testingKey !== null}
@@ -310,7 +292,6 @@ function ConnectionPanel({
   form,
   effective,
   serviceReachable,
-  encryptionUnlocked,
   saving,
   testing,
   busy,
@@ -324,7 +305,6 @@ function ConnectionPanel({
   form: FormState;
   effective: EffectiveConnection | null;
   serviceReachable: boolean;
-  encryptionUnlocked: boolean;
   saving: boolean;
   testing: boolean;
   /** Any connection is mid-save/mid-test — both write to the same service. */
@@ -433,26 +413,15 @@ function ConnectionPanel({
           id={id('password')}
           type="password"
           value={form.password}
-          disabled={!encryptionUnlocked}
           autoComplete="new-password"
-          placeholder={
-            encryptionUnlocked
-              ? 'Biarkan kosong untuk mempertahankan password tersimpan'
-              : 'Enkripsi terkunci — password tidak dapat diubah'
-          }
+          placeholder="Biarkan kosong untuk mempertahankan password tersimpan"
           onChange={(e) => onChange({ password: e.target.value })}
         />
         <p className="text-[11px] leading-snug text-muted-foreground">
           {view.hasPassword
-            ? 'Ada password tersimpan (terenkripsi) dan tidak pernah ditampilkan kembali. Isi kolom ini hanya bila ingin menggantinya.'
+            ? 'Ada password tersimpan dan tidak pernah ditampilkan kembali. Isi kolom ini hanya bila ingin menggantinya.'
             : 'Belum ada password tersimpan — layanan memakai password dari environment variable. Isi kolom ini untuk menyimpan password sendiri.'}
         </p>
-        {!encryptionUnlocked && (
-          <p className="flex items-start gap-1.5 text-[11px] leading-snug text-amber-700 dark:text-amber-300">
-            <Lock className="mt-px h-3 w-3 shrink-0" />
-            <span>Buka kunci enkripsi di Tata Kelola untuk mengubah password.</span>
-          </p>
-        )}
       </div>
 
       <div className="mt-3 space-y-2 rounded-md border bg-muted/30 p-2.5">
@@ -639,18 +608,6 @@ function EffectivePanel({
         <p className="mt-1.5 text-[10px] leading-snug text-sky-700 dark:text-sky-300">
           Layanan masih berjalan di environment variable — pengaturan di atas belum tersimpan atau
           sedang dinonaktifkan.
-        </p>
-      )}
-
-      {effective.passwordFellBackToEnv && (
-        <p className="mt-2 flex items-start gap-1.5 rounded-md bg-amber-500/10 p-1.5 text-[11px] leading-snug text-amber-700 dark:text-amber-300">
-          <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
-          <span className="min-w-0">
-            <strong className="font-semibold">Password tersimpan tidak terpakai.</strong> Layanan
-            tidak dapat mendekripsinya karena enkripsi terkunci, lalu diam-diam memakai password dari
-            environment variable. Buka kunci enkripsi di Tata Kelola agar password tersimpan
-            benar-benar dipakai.
-          </span>
         </p>
       )}
     </div>

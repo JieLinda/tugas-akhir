@@ -36,8 +36,6 @@ interface ChatMessage {
    * with a gap.
    */
   createdAt?: string | null;
-  /** False when the row could not be decrypted; the export labels those. */
-  readable?: boolean;
 }
 
 type ChatRunInfo = {

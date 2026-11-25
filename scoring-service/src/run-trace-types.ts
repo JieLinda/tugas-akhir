@@ -483,6 +483,17 @@ export type EngineTrace = {
     dPlus: number[];
     dMinus: number[];
     targetFinalists: number;
+    /**
+     * A "Tambah Kandidat Pembanding" child ranks on its parent's yardstick:
+     * colNorms / idealPos / idealNeg are then the PARENT's, not derived from
+     * `matrix`, and each weighted value is clamped into [idealNeg, idealPos].
+     * Absent on traces written before this (classic).
+     */
+    anchored?: boolean;
+    /** `own` | `parent` | `parent_pool` — see RecordedTopsis in topsis-ranking.ts. */
+    anchorSource?: string;
+    /** Per row × active criterion: the weighted value was clamped onto an ideal. */
+    clamped?: boolean[][];
   };
   readiness: { source: string; thresholds: { minScore: number; level: string }[] | null; defaultLevel: string | null };
   carried: { parentRunId: string | null; candidateIds: string[]; fromParentTrace: number };

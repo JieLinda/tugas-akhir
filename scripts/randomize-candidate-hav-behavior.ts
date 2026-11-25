@@ -1,9 +1,7 @@
 import 'dotenv/config';
 
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
-import { decryptCandidateValue } from '../lib/candidate-crypto';
-import { encryptIfEnabled, ensureUnlocked, isInitialized } from '../lib/crypto/key-store';
 import { db, pool } from '../lib/db';
 import * as schema from '../lib/db/schema';
 
@@ -42,11 +40,6 @@ import * as schema from '../lib/db/schema';
  * `sync_behavior_competencies`. That matters because the criterion names in
  * governance filter rules are matched exactly — a made-up label like "GOOD"
  * would fail every rule and look like a bug rather than a low score.
- *
- * Writes go through `encryptIfEnabled`, the same three-state path the app uses:
- * plaintext when encryption was never initialised, ciphertext when it is
- * unlocked, and a hard error when it is initialised but locked. It never writes
- * plaintext into a column the operator believes is sealed.
  *
  * Usage:
  *   pnpm tsx scripts/randomize-candidate-hav-behavior.ts                 # dry run
@@ -213,20 +206,6 @@ function printHistogram(title: string, rows: { value: string; n: number }[], tot
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
 
-  // Same gate as scripts/encrypt-candidates.ts: refuse to write rather than
-  // silently drop plaintext into a column the operator believes is sealed.
-  const unlocked = await ensureUnlocked();
-  const initialised = await isInitialized();
-  if (initialised && !unlocked) {
-    console.error(
-      'Enkripsi sudah diinisialisasi tetapi master key tidak terbaca. ' +
-        'Set PULSE_MASTER_KEY_FILE (atau PULSE_MASTER_KEY) lalu jalankan ulang — ' +
-        'menulis plaintext ke kolom yang seharusnya tersegel bukan pilihan.',
-    );
-    process.exit(1);
-  }
-  const willEncrypt = initialised && unlocked;
-
   // Tenant scope: accept a slug or a uuid, because both are things a person has
   // at hand (the slug is in the URL cookie, the uuid in lib/tenant.ts).
   let tenantId: string | null = null;
@@ -269,11 +248,10 @@ async function main() {
     .from(schema.candidates)
     .where(where.length > 0 ? and(...where) : undefined);
 
-  // Values are encrypted at rest; decrypt to report the BEFORE picture.
   const before = rows.map((r) => ({
     id: r.id,
-    hav: decryptCandidateValue(r.havQuadrant),
-    behavior: decryptCandidateValue(r.behaviorRecommendation),
+    hav: r.havQuadrant,
+    behavior: r.behaviorRecommendation,
   }));
 
   const targets = opts.onlyEmpty
@@ -293,11 +271,6 @@ async function main() {
   console.log(`Kolom            : ${opts.only === 'both' ? 'hav_quadrant + behavior_recommendation (+ behavior_notes)' : opts.only}`);
   console.log(`Sebaran          : ${opts.uniform ? 'uniform (rata)' : 'realistic (berbobot)'}`);
   console.log(`Seed             : ${opts.seed}`);
-  console.log(
-    `Enkripsi         : ${
-      willEncrypt ? 'AKTIF — nilai ditulis sebagai ciphertext v1:' : 'tidak diinisialisasi — nilai ditulis plaintext'
-    }`,
-  );
   console.log(`Mode             : ${opts.apply ? 'APPLY (menulis ke database)' : 'DRY RUN (tidak menulis)'}`);
 
   printHistogram(
@@ -392,13 +365,11 @@ async function main() {
       for (const row of batch) {
         const patch: Record<string, unknown> = { updatedAt: new Date() };
         if (opts.only !== 'behavior') {
-          patch.havQuadrant = await encryptIfEnabled(row.hav);
+          patch.havQuadrant = row.hav;
         }
         if (opts.only !== 'hav') {
-          patch.behaviorRecommendation = await encryptIfEnabled(row.behavior);
-          patch.behaviorNotes = await encryptIfEnabled(
-            row.behavior ? (BEHAVIOR_NOTES[row.behavior] ?? null) : null,
-          );
+          patch.behaviorRecommendation = row.behavior;
+          patch.behaviorNotes = row.behavior ? (BEHAVIOR_NOTES[row.behavior] ?? null) : null;
         }
         await tx.update(schema.candidates).set(patch).where(eq(schema.candidates.id, row.id));
         written++;
@@ -407,31 +378,7 @@ async function main() {
     console.log(`  ${Math.min(i + BATCH, plan.length)}/${plan.length}`);
   }
 
-  // Read back a couple of rows so the operator sees the storage form, not just a
-  // success message — "encrypted like current behaviour" is the requirement, and
-  // this is the only place it is observable.
-  const sample = await db
-    .select({
-      id: schema.candidates.id,
-      havQuadrant: schema.candidates.havQuadrant,
-      behaviorRecommendation: schema.candidates.behaviorRecommendation,
-    })
-    .from(schema.candidates)
-    .where(inArray(schema.candidates.id, plan.slice(0, 2).map((r) => r.id)));
-
   console.log(`\nSelesai — ${written} baris diperbarui.`);
-  for (const row of sample) {
-    console.log(
-      `  ${row.id.slice(0, 8)}  hav=${String(row.havQuadrant).slice(0, 28)}${
-        String(row.havQuadrant).length > 28 ? '…' : ''
-      }  →  "${decryptCandidateValue(row.havQuadrant)}"`,
-    );
-    console.log(
-      `            behavior=${String(row.behaviorRecommendation).slice(0, 28)}${
-        String(row.behaviorRecommendation).length > 28 ? '…' : ''
-      }  →  "${decryptCandidateValue(row.behaviorRecommendation)}"`,
-    );
-  }
   console.log(
     '\nCATATAN: sinkronisasi "Kandidat" berikutnya (termasuk cron Senin 01:00) menulis ulang\n' +
       'kedua kolom ini dari sync_hav / sync_behavior_competencies. Jalankan skrip ini lagi\n' +

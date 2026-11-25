@@ -182,9 +182,17 @@ export function buildTopsis(ctx: BuildContext): void {
   const active = (t?.topsis?.activeCriteria ?? ri.ahp?.activeCriteria ?? [...CRITERIA]) as Criterion[];
   const A = active.length;
   const s = ctx.sheet(SHEET.topsis, [5, 38, 26, ...Array(A).fill(11), ...Array(A).fill(13), 13, 13, 13, 8, 8, 16, 8, 13, 10, 9, 9, ...Array(A).fill(10)]);
+  // A "Tambah Kandidat Pembanding" child ranks on its PARENT's yardstick
+  // (topsisDetailed's anchored mode): norm and both ideals are the parent's
+  // numbers — inputs here, not formulas over this pool — and v is clamped into
+  // [A⁻, A⁺]. Carried rows then reproduce the parent's CC; an added row that
+  // exceeded the parent's ideal sits AT it.
+  const anchored = t?.topsis?.anchored === true;
   s.row(['TOPSIS — PERINGKAT AKHIR (matriks keputusan: kandidat × kriteria aktif)']);
   s.row([
-    'x_ij = skor kriteria (dirujuk dari lembar aspek). norm_j = √Σ_i x_ij² (1E-9 bila 0). v_ij = (w_j × x_ij) ÷ norm_j. A⁺_j = MAX_i v_ij, A⁻_j = MIN_i v_ij (semua kriteria benefit).',
+    anchored
+      ? `x_ij = skor kriteria (dirujuk dari lembar aspek). norm_j, A⁺_j, A⁻_j = SKALA RUN INDUK (masukan, ${t?.topsis?.anchorSource === 'parent_pool' ? 'diturunkan dari pool tersimpan run induk' : 'dicatat run induk'}), bukan dihitung dari pool ini. v_ij = MIN(MAX((w_j × x_ij) ÷ norm_j, A⁻_j), A⁺_j).`
+      : 'x_ij = skor kriteria (dirujuk dari lembar aspek). norm_j = √Σ_i x_ij² (1E-9 bila 0). v_ij = (w_j × x_ij) ÷ norm_j. A⁺_j = MAX_i v_ij, A⁻_j = MIN_i v_ij (semua kriteria benefit).',
   ]);
   s.row([
     'D⁺_i = √Σ_j (v_ij − A⁺_j)², D⁻_i = √Σ_j (v_ij − A⁻_j)², CC_i = D⁻ ÷ (D⁺ + D⁻). Peringkat = 1 + #(CC lebih besar) + #(CC sama DAN candidate_id lebih kecil). Skor = ROUND(CC × 100, 0).',
@@ -220,9 +228,15 @@ export function buildTopsis(ctx: BuildContext): void {
   const eRow: Cell[] = ['', 'norm_j engine', ''];
   active.forEach((k, j) => {
     wRow[cX + j] = F(`P_WEFF_${k.toUpperCase()}`, FULL);
-    nRow[cX + j] = F(`IF(SUMSQ(${colRange(cX + j)})=0,P_TOPSIS_ZERO,SQRT(SUMSQ(${colRange(cX + j)})))`, FULL);
-    pRow[cV + j] = F(`MAX(${colRange(cV + j)})`, FULL);
-    mRow[cV + j] = F(`MIN(${colRange(cV + j)})`, FULL);
+    if (anchored) {
+      nRow[cX + j] = N(t?.topsis?.colNorms?.[j] ?? null, FULL);
+      pRow[cV + j] = N(t?.topsis?.idealPos?.[j] ?? null, FULL);
+      mRow[cV + j] = N(t?.topsis?.idealNeg?.[j] ?? null, FULL);
+    } else {
+      nRow[cX + j] = F(`IF(SUMSQ(${colRange(cX + j)})=0,P_TOPSIS_ZERO,SQRT(SUMSQ(${colRange(cX + j)})))`, FULL);
+      pRow[cV + j] = F(`MAX(${colRange(cV + j)})`, FULL);
+      mRow[cV + j] = F(`MIN(${colRange(cV + j)})`, FULL);
+    }
     eRow[cX + j] = N(t?.topsis?.colNorms?.[j] ?? null, FULL);
     eRow[cV + j] = N(t?.topsis?.idealPos?.[j] ?? null, FULL);
   });
@@ -263,7 +277,9 @@ export function buildTopsis(ctx: BuildContext): void {
     const links = ctx.aspectCell.get(id) ?? {};
     active.forEach((k, j) => {
       row[cX + j] = links[k] ? F(links[k]!) : N(stored?.[k] ?? null);
-      row[cV + j] = F(`(${L(cX + j)}$5*${L(cX + j)}${r})/${L(cX + j)}$6`, FULL);
+      row[cV + j] = anchored
+        ? F(`MIN(MAX((${L(cX + j)}$5*${L(cX + j)}${r})/${L(cX + j)}$6,${L(cV + j)}$8),${L(cV + j)}$7)`, FULL)
+        : F(`(${L(cX + j)}$5*${L(cX + j)}${r})/${L(cX + j)}$6`, FULL);
       row[cStoredX + j] = N(stored?.[k] ?? null);
     });
     const vR = `${L(cV)}${r}:${L(cV + A - 1)}${r}`;

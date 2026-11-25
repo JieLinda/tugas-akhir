@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { CircleAlert, CircleHelp } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -37,7 +37,10 @@ export function InfoHint({
   size = 'sm',
   className,
   contentClassName,
+  icon: CustomIcon,
 }: {
+  /** Replaces the "?"/"!" glyph — for a row of hints that each name their topic by icon. */
+  icon?: ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
   children: ReactNode;
   /** Bold first line of the panel; also names the button for screen readers. */
   title?: ReactNode;
@@ -77,7 +80,7 @@ export function InfoHint({
     setOpen(next);
   };
 
-  const Icon = kind === 'note' ? CircleAlert : CircleHelp;
+  const Icon = CustomIcon ?? (kind === 'note' ? CircleAlert : CircleHelp);
   const accessible = label ?? (typeof title === 'string' ? `Penjelasan: ${title}` : 'Penjelasan');
   const box = size === 'xs' ? 'h-4 w-4' : size === 'md' ? 'h-6 w-6' : 'h-5 w-5';
   const glyph = size === 'xs' ? 'h-3 w-3' : size === 'md' ? 'h-[18px] w-[18px]' : 'h-3.5 w-3.5';

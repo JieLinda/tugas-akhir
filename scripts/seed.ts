@@ -12,7 +12,6 @@ import {
   type CandidateProfile,
 } from '../lib/talent-data';
 import { systemProgramTemplates } from '../lib/program-defaults';
-import { decryptCandidateRows, encryptCandidateRow } from '../lib/candidate-crypto';
 
 const SEED_USER_ID = deterministicUuid('seed-user');
 const DEFAULT_ASSESSMENT_VALID_UNTIL = '2028-12-31';
@@ -240,24 +239,22 @@ async function repairSeededCandidateFilterData(tenantId: string) {
   const sourceByEmail = new Map(sourceCandidates.map((candidate) => [candidate.email, candidate]));
   const sourceByName = new Map(sourceCandidates.map((candidate) => [candidate.name, candidate]));
 
-  const rows = decryptCandidateRows(
-    await db
-      .select({
-        id: schema.candidates.id,
-        employeeId: schema.candidates.employeeId,
-        email: schema.candidates.email,
-        name: schema.candidates.name,
-        yearsExperience: schema.candidates.yearsExperience,
-        disciplineStatus: schema.candidates.disciplineStatus,
-        mcuStatus: schema.candidates.mcuStatus,
-        performanceGrade: schema.candidates.performanceGrade,
-        havQuadrant: schema.candidates.havQuadrant,
-        education: schema.candidates.education,
-        major: schema.candidates.major,
-      })
-      .from(schema.candidates)
-      .where(eq(schema.candidates.tenantId, tenantId)),
-  );
+  const rows = await db
+    .select({
+      id: schema.candidates.id,
+      employeeId: schema.candidates.employeeId,
+      email: schema.candidates.email,
+      name: schema.candidates.name,
+      yearsExperience: schema.candidates.yearsExperience,
+      disciplineStatus: schema.candidates.disciplineStatus,
+      mcuStatus: schema.candidates.mcuStatus,
+      performanceGrade: schema.candidates.performanceGrade,
+      havQuadrant: schema.candidates.havQuadrant,
+      education: schema.candidates.education,
+      major: schema.candidates.major,
+    })
+    .from(schema.candidates)
+    .where(eq(schema.candidates.tenantId, tenantId));
 
   let updated = 0;
   for (const row of rows) {
@@ -281,17 +278,15 @@ async function repairSeededCandidateFilterData(tenantId: string) {
 
     await db
       .update(schema.candidates)
-      .set(
-        await encryptCandidateRow({
-          yearsExperience: String(sourceCandidate.yearsExperience),
-          disciplineStatus: sourceCandidate.disciplineStatus,
-          mcuStatus: sourceCandidate.mcuStatus,
-          performanceGrade: sourceCandidate.performanceGrade,
-          havQuadrant: sourceCandidate.havQuadrant,
-          education: sourceCandidate.education,
-          major: sourceCandidate.major,
-        }),
-      )
+      .set({
+        yearsExperience: String(sourceCandidate.yearsExperience),
+        disciplineStatus: sourceCandidate.disciplineStatus,
+        mcuStatus: sourceCandidate.mcuStatus,
+        performanceGrade: sourceCandidate.performanceGrade,
+        havQuadrant: sourceCandidate.havQuadrant,
+        education: sourceCandidate.education,
+        major: sourceCandidate.major,
+      })
       .where(eq(schema.candidates.id, row.id));
 
     updated += 1;
@@ -383,28 +378,24 @@ async function main() {
     );
 
     await tx.insert(schema.candidates).values(
-      await Promise.all(
-        seedCandidates.map(async (candidate) =>
-          encryptCandidateRow({
-            id: candidateIdByMockId.get(candidate.mockId)!,
-            tenantId: defaultTenantId,
-            employeeId: candidate.employeeId,
-            name: candidate.name,
-            email: candidate.email,
-            currentPosition: candidate.currentPosition,
-            department: candidate.department,
-            division: candidate.division,
-            yearsExperience: String(candidate.yearsExperience),
-            disciplineStatus: candidate.disciplineStatus,
-            mcuStatus: candidate.mcuStatus,
-            performanceGrade: candidate.performanceGrade,
-            havQuadrant: candidate.havQuadrant,
-            education: candidate.education,
-            major: candidate.major,
-            createdBy: SEED_USER_ID,
-          }),
-        ),
-      ),
+      seedCandidates.map((candidate) => ({
+        id: candidateIdByMockId.get(candidate.mockId)!,
+        tenantId: defaultTenantId,
+        employeeId: candidate.employeeId,
+        name: candidate.name,
+        email: candidate.email,
+        currentPosition: candidate.currentPosition,
+        department: candidate.department,
+        division: candidate.division,
+        yearsExperience: String(candidate.yearsExperience),
+        disciplineStatus: candidate.disciplineStatus,
+        mcuStatus: candidate.mcuStatus,
+        performanceGrade: candidate.performanceGrade,
+        havQuadrant: candidate.havQuadrant,
+        education: candidate.education,
+        major: candidate.major,
+        createdBy: SEED_USER_ID,
+      })),
     );
 
     await tx.insert(schema.criteria).values(

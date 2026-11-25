@@ -9,8 +9,6 @@ import { requirePermission } from '@/lib/rbac';
 import { ensureLocalUser } from '@/lib/pulse-data';
 import { getCurrentTenantId } from '@/lib/tenant';
 import { logAudit } from '@/lib/audit';
-import { encryptIfEnabled, ensureUnlocked } from '@/lib/crypto/key-store';
-import { isSealed } from '@/lib/crypto/envelope';
 
 /**
  * MSSQL source-database settings, edited from the Sinkronisasi page.
@@ -48,7 +46,6 @@ export type SourceConnectionsState = {
   connections: SourceConnectionView[];
   /** What the sync service reports it actually resolved, or null when unreachable. */
   effective: Record<SyncSourceKey, EffectiveConnection> | null;
-  encryptionUnlocked: boolean;
 };
 
 /** Mirrors describeConnections() in sync-service/src/services/db-settings.ts. */
@@ -58,8 +55,6 @@ type EffectiveConnection = {
   database: string;
   origin: string;
   hasPassword: boolean;
-  /** The service had a stored password but could not decrypt it (locked). */
-  passwordFellBackToEnv: boolean;
 };
 
 const syncServiceUrl = () => process.env.SYNC_SERVICE_URL ?? 'http://localhost:8000';
@@ -114,10 +109,8 @@ export async function getSourceConnectionsAction(): Promise<SourceConnectionsSta
     };
   });
 
-  // Ask the service what it actually resolved. Showing only the stored row would
-  // hide the case that matters most: a saved password that the service cannot
-  // decrypt because it is locked, and which it has silently replaced with the
-  // env var.
+  // Ask the service what it actually resolved: the stored row alone would not
+  // show whether the service picked it up or is still running on env vars.
   let effective: SourceConnectionsState['effective'] = null;
   const res = await pingSyncService('/api/sync/_db-settings');
   if (res?.ok) {
@@ -131,13 +124,12 @@ export async function getSourceConnectionsAction(): Promise<SourceConnectionsSta
         database: body.connections?.[key]?.database ?? '',
         origin: body.connections?.[key]?.origin ?? 'env',
         hasPassword: body.connections?.[key]?.hasPassword ?? false,
-        passwordFellBackToEnv: body.connections?.[key]?.passwordFellBackToEnv ?? false,
       });
       effective = { MPMDS: read('MPMDS'), MPMHRGA: read('MPMHRGA') };
     }
   }
 
-  return { connections, effective, encryptionUnlocked: await ensureUnlocked() };
+  return { connections, effective };
 }
 
 export type SaveSourceConnectionInput = {
@@ -176,28 +168,9 @@ export async function saveSourceConnectionAction(
       .where(eq(schema.syncSourceConnections.sourceKey, input.sourceKey))
       .limit(1);
 
-    // An empty password field means "keep the stored one", so only a non-empty
-    // value goes through the crypto path at all.
-    //
-    // encryptIfEnabled gives the three-state rule: plaintext when encryption was
-    // never initialised (otherwise this whole settings page would be unusable on
-    // an install that has not opted in), ciphertext when unlocked, and a refusal
-    // when initialised-but-locked — because a plaintext write into a column
-    // named password_encrypted is a lie the rest of the system believes.
-    let passwordEncrypted = existing?.passwordEncrypted ?? null;
-    let storedInClear = false;
-    if (input.password) {
-      try {
-        passwordEncrypted = await encryptIfEnabled(input.password);
-        storedInClear = !isSealed(passwordEncrypted ?? '');
-      } catch {
-        return {
-          success: false,
-          message:
-            'Enkripsi terkunci — password tidak dapat disimpan. Buka kunci di Pengaturan → Keamanan terlebih dahulu, atau simpan tanpa mengubah password.',
-        };
-      }
-    }
+    // An empty password field means "keep the stored one". The column keeps its
+    // historical name; the value is stored as entered.
+    const passwordEncrypted = input.password || existing?.passwordEncrypted || null;
 
     const values = {
       sourceKey: input.sourceKey,
@@ -240,15 +213,7 @@ export async function saveSourceConnectionAction(
       ? `Koneksi ${input.sourceKey} disimpan dan diterapkan.`
       : `Koneksi ${input.sourceKey} disimpan, tetapi layanan sinkronisasi tidak dapat dihubungi — perubahan berlaku saat layanan berikutnya start.`;
 
-    return {
-      success: true,
-      // Said out loud rather than left to be discovered: the password really is
-      // sitting in the database unprotected until encryption is initialised, and
-      // the column name suggests otherwise.
-      message: storedInClear
-        ? `${base} PERHATIAN: enkripsi belum diaktifkan, sehingga password tersimpan tanpa enkripsi. Aktifkan di Pengaturan → Keamanan, lalu simpan ulang password.`
-        : base,
-    };
+    return { success: true, message: base };
   } catch (err) {
     return {
       success: false,

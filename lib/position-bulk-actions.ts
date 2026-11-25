@@ -34,7 +34,6 @@ import { ensureLocalUser, getGradeLevelsForTenant } from '@/lib/pulse-data';
 import { requirePermission } from '@/lib/rbac';
 import { startTournamentSessionAction } from '@/lib/scoring-engine';
 import { getCurrentTenantId } from '@/lib/tenant';
-import { decryptCandidateValue } from '@/lib/candidate-crypto';
 
 import { formatDate } from '@/lib/datetime';
 import { RUN_LABEL_SEPARATOR } from '@/lib/run-label';
@@ -119,7 +118,7 @@ async function loadEligiblePositions(
     JOIN sync_employees se
       ON se.company_id = sep.company_id AND LPAD(se.employee_id, 5, '0') = sep.employee_id
     -- A tombstoned candidate is still an employee holding the seat, so they stay
-    -- an incumbent; the join only supplies their (decryptable) candidate name.
+    -- an incumbent; the join only supplies their candidate name.
     LEFT JOIN candidates c
       ON LPAD(c.employee_id, 5, '0') = sep.employee_id
      AND c.tenant_id = ${tenantId}
@@ -159,7 +158,7 @@ async function loadEligiblePositions(
     if (!seenHolder.has(holderKey)) {
       seenHolder.add(holderKey);
       row.holders.push({
-        name: decryptCandidateValue(raw.candidate_name) ?? raw.employee_name ?? '',
+        name: raw.candidate_name || raw.employee_name || '',
         employeeId,
         gradeId: raw.grade_id,
       });

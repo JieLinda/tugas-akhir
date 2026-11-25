@@ -232,7 +232,7 @@ export function RankSlopeChart({ dto }: { dto: ComparisonDto }) {
               {activeRow.row.ccB != null ? fmtCloseness(activeRow.row.ccB) : '—'}
               {activeRow.row.deltaPp != null && <> ({fmtPp(activeRow.row.deltaPp)})</>}
             </p>
-            <p className="text-muted-foreground">{finalistText(activeRow.row.finalistChange)}</p>
+            <p className="text-muted-foreground">{finalistText(activeRow.row.finalistChange, activeRow.row.leftCause)}</p>
           </div>
         )}
       </div>

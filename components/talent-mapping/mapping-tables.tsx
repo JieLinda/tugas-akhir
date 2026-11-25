@@ -305,8 +305,6 @@ export function AuditTable({
                   <TableCell className="py-2">
                     {masked ? (
                       <Mask w={8} />
-                    ) : e.unreadable ? (
-                      <span className="text-[11px] text-muted-foreground">terkunci</span>
                     ) : (
                       <span className="flex flex-wrap items-center gap-1">
                         <QuadrantChip quadrant={e.fromQuadrant} withName={false} />
@@ -344,7 +342,7 @@ export function AuditTable({
                     )}
                   </TableCell>
                   <TableCell className="max-w-md py-2 text-xs whitespace-pre-wrap text-muted-foreground">
-                    {masked ? <Mask w={10} /> : e.unreadable ? 'terkunci' : (e.justification ?? '—')}
+                    {masked ? <Mask w={10} /> : (e.justification ?? '—')}
                   </TableCell>
                 </TableRow>
               );

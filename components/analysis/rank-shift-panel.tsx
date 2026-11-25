@@ -3,11 +3,12 @@
 // "Selisih Peringkat" — on a run derived from an earlier AHP+TOPSIS run.
 //
 // A "Tambah Kandidat Pembanding" child differs from its parent only by its
-// candidate set, yet carried-over candidates' Kecocokan moves: TOPSIS is
-// set-relative, so an added alternative changes every column's normalisation
-// divisor and may become the new best or worst value of a criterion. That is
-// the method behaving as defined, but it is indefensible in a succession review
-// if it happens silently — so this panel shows, against the parent by default
+// candidate set, and since the parent's TOPSIS yardstick is frozen too the
+// carried-over candidates keep their Kecocokan and order — they only move down
+// by the comparison candidates inserted above them. Children made before that
+// rule re-ran classic TOPSIS, which is set-relative: an added alternative
+// changed every column's divisor and could reorder carried candidates. Either
+// way a succession review must see what moved — so this panel shows, against the parent by default
 // and against the root on request, the SAME comparison the full page computes
 // (`compareRuns`, lib/run-compare.ts; FR-CMP): the sources of change, the
 // template sentences and the ranking, with a link to the full comparison. It is

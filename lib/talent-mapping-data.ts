@@ -4,12 +4,10 @@ import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import { db } from '@/lib/db';
 import * as schema from '@/lib/db/schema';
-import { decryptCandidateValue } from '@/lib/candidate-crypto';
 import { isDemoMode } from '@/lib/app-mode';
 import { MASKED_NPK } from '@/lib/app-mode-shared';
 import { loadDemoCopies, loadDemoOnIds } from '@/lib/demo/store';
 import { demoEdits } from '@/lib/demo/fields';
-import { decryptOrNull, ensureUnlocked } from '@/lib/crypto/key-store';
 import { formatDate, toDayKey } from '@/lib/datetime';
 import type { HavDeriveResult } from '@/lib/hav-quadrant-derive';
 import { splitPerformanceSlots } from '@/lib/hav-quadrant-derive';
@@ -81,20 +79,6 @@ export function formulaForPage(derived: HavDeriveResult): TalentMappingFormula {
     performanceBand: derived.performanceBand,
     performance: derived.performance,
   };
-}
-
-/** Open a sealed quadrant. `unreadable` = it was sealed and could not be opened. */
-export function openQuadrant(value: string | null): { quadrant: number | null; unreadable: boolean } {
-  if (value == null) return { quadrant: null, unreadable: false };
-  const opened = decryptOrNull(value);
-  if (opened.value == null) return { quadrant: null, unreadable: true };
-  return { quadrant: parseQuadrant(opened.value), unreadable: false };
-}
-
-function openText(value: string | null): { text: string | null; unreadable: boolean } {
-  if (value == null) return { text: null, unreadable: false };
-  const opened = decryptOrNull(value);
-  return opened.value == null ? { text: null, unreadable: true } : { text: opened.value, unreadable: false };
 }
 
 /**
@@ -219,7 +203,6 @@ export async function loadTalentMappingAudit(
   tenantId: string,
   opts: { candidateId?: string; limit?: number } = {},
 ): Promise<{ entries: TalentMappingAuditEntry[]; total: number }> {
-  await ensureUnlocked();
   const where = and(
     eq(schema.talentAuditLogs.tenantId, tenantId),
     eq(schema.talentAuditLogs.mappingKind, 'hav16'),
@@ -259,7 +242,7 @@ export async function loadTalentMappingAudit(
         .from(schema.candidates)
         .where(inArray(schema.candidates.id, candidateIds))
     : [];
-  const nameById = new Map(nameRows.map((r) => [r.id, decryptCandidateValue(r.name)]));
+  const nameById = new Map(nameRows.map((r) => [r.id, r.name || null]));
   // Demo mode: the history of an OFF candidate is not shown (OFF = as if
   // deleted from Talent Mapping), names are the demo copy's, and no NPK.
   const demo = await isDemoMode();
@@ -270,25 +253,20 @@ export async function loadTalentMappingAudit(
   }
 
   const entries = rows.map((r): TalentMappingAuditEntry => {
-    const from = openQuadrant(r.oldQuadrant);
-    const to = openQuadrant(r.newQuadrant);
-    const baseline = openQuadrant(r.baselineQuadrant);
-    const why = openText(r.justification);
     return {
       id: r.id,
       candidateId: r.candidateId,
       employeeId: demo ? MASKED_NPK : r.employeeId,
       candidateName: r.candidateId ? (nameById.get(r.candidateId) ?? null) : null,
       action: r.action ?? null,
-      fromQuadrant: from.quadrant,
-      toQuadrant: to.quadrant,
-      baselineQuadrant: baseline.quadrant,
+      fromQuadrant: parseQuadrant(r.oldQuadrant),
+      toQuadrant: parseQuadrant(r.newQuadrant),
+      baselineQuadrant: parseQuadrant(r.baselineQuadrant),
       baselineSource: r.baselineSource ?? null,
-      justification: why.text,
+      justification: r.justification ?? null,
       changedByName: r.changedByName ?? null,
       changedByUsername: r.changedByUsername ?? null,
       timestamp: r.timestamp.toISOString(),
-      unreadable: from.unreadable || to.unreadable || baseline.unreadable || why.unreadable,
     };
   });
 
@@ -302,7 +280,6 @@ export async function loadTalentMappingAudit(
 /** Everything the Talent Mapping page renders, for the active business unit. */
 export async function getTalentMappingData(): Promise<TalentMappingData> {
   const tenantId = await getCurrentTenantId();
-  await ensureUnlocked();
   const referenceYear = currentReferenceYear();
 
   const [population, placementRows, audit, clocks, context] = await Promise.all([
@@ -331,13 +308,13 @@ export async function getTalentMappingData(): Promise<TalentMappingData> {
   // force, computed by the same loader every other reader uses.
   const placementByCandidate = new Map<string, TalentMappingPlacementInfo>();
   for (const row of placementRows) {
-    const quadrant = openQuadrant(row.quadrant).quadrant;
+    const quadrant = parseQuadrant(row.quadrant);
     if (quadrant == null) continue;
     placementByCandidate.set(row.candidateId, {
       quadrant,
-      baselineQuadrant: openQuadrant(row.baselineQuadrant).quadrant,
+      baselineQuadrant: parseQuadrant(row.baselineQuadrant),
       baselineSource: row.baselineSource,
-      justification: openText(row.justification).text,
+      justification: row.justification,
       placedByName: row.placedByName ?? null,
       placedByUsername: row.placedByUsername ?? null,
       placedAt: row.updatedAt.toISOString(),

@@ -144,7 +144,9 @@ export function buildPool(ctx: BuildContext): void {
   const s = ctx.sheet(SHEET.pool, [38, 26, 14, 12, 10, 10, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]);
   s.row(['PEMBENTUKAN POOL — siapa yang masuk matriks keputusan']);
   s.row([
-    'TOPSIS bersifat relatif terhadap himpunan: pembagi kolom dan titik ideal diambil dari kandidat yang ada, jadi keanggotaan pool ikut menentukan setiap nilai kedekatan.',
+    ctx.t?.topsis?.anchored
+      ? 'Run turunan ini memeringkat dengan skala TOPSIS run induk (pembagi kolom dan titik ideal induk), sehingga kandidat yang dibawa dari induk mempertahankan nilai kedekatannya dan kandidat pembanding disisipkan di antaranya.'
+      : 'TOPSIS bersifat relatif terhadap himpunan: pembagi kolom dan titik ideal diambil dari kandidat yang ada, jadi keanggotaan pool ikut menentukan setiap nilai kedekatan.',
   ]);
   s.blank();
   const rerun = ctx.b.configSnapshot?.rerun as RunRerunSnapshot | undefined;

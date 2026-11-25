@@ -20,7 +20,11 @@ import { config } from "../config.js";
  */
 export function uploadRoot(): string {
   const configured = config.uploadFolder || "uploads";
-  return isAbsolute(configured) ? configured : resolve(process.cwd(), configured);
+  // resolve() also NORMALISES an absolute path: "C:/x/uploads" from .env would
+  // otherwise never prefix-match the backslashed paths resolve() produces in
+  // discardUploaded, so every processed upload was reported "gagal dihapus"
+  // and left on disk.
+  return isAbsolute(configured) ? resolve(configured) : resolve(process.cwd(), configured);
 }
 
 export const UPLOAD_SUBDIR = {

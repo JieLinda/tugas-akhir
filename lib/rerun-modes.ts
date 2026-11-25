@@ -4,10 +4,12 @@
 // with these extra people in it?" Everything else about the parent run is
 // FROZEN — the six aspect scores and raw inputs of every carried-over candidate,
 // the AHP weights after redistribution, the active criteria, program / position /
-// level range / filter rules, the calibration anchors and the reference date —
-// so the ONLY thing that can move a carried-over candidate is the changed
-// alternative set (TOPSIS is set-relative at the column norms and at the ideal /
-// anti-ideal solutions). See "Re-run scoring — aturan desain" in CLAUDE.md.
+// level range / filter rules, the calibration anchors, the reference date and
+// the TOPSIS yardstick (divisors + ideals) — so a carried-over candidate keeps
+// its parent closeness exactly and only moves down by the comparison candidates
+// inserted above it. (Children from before the yardstick was frozen re-ran
+// classic TOPSIS on the union, which is set-relative and could reorder carried
+// candidates.) See "Re-run scoring — aturan desain" in CLAUDE.md.
 //
 // That is `incremental_add`, labelled "Tambah Kandidat Pembanding". The other
 // four modes this table used to offer each mixed a second cause into the
@@ -89,9 +91,9 @@ export const RERUN_MODES: Record<RerunMode, RerunModeSpec> = {
     // and every label already written by this mode uses it.
     delta: ({ added }) => `+${n(added)} kandidat`,
     description:
-      'Run induk dibekukan apa adanya — keenam skor aspek dan data mentah kandidat lama, bobot AHP setelah pembagian ulang, kriteria aktif, aturan filter, jangkar kalibrasi, dan tanggal acuan. Hanya kandidat yang belum ada di pool induk yang dinilai; TOPSIS dihitung ulang atas gabungannya.',
+      'Run induk dibekukan apa adanya — keenam skor aspek dan data mentah kandidat lama, bobot AHP setelah pembagian ulang, kriteria aktif, aturan filter, jangkar kalibrasi, tanggal acuan, dan skala TOPSIS (pembagi serta titik ideal). Hanya kandidat yang belum ada di pool induk yang dinilai, lalu disisipkan ke peringkat run induk. Run yang dibuat sebelum skala TOPSIS dibekukan menghitung ulang TOPSIS atas gabungannya.',
     expectation:
-      'Perubahan peringkat murni dipicu oleh bertambahnya himpunan alternatif — data dan bobot kandidat lain tidak berubah.',
+      'Kandidat lama tetap pada urutan dan kecocokan run induk; peringkat mereka hanya turun sebanyak kandidat pembanding yang disisipkan di atasnya. (Run lama yang menghitung ulang TOPSIS atas gabungannya bisa ikut menggeser urutan kandidat lama.)',
     legacy: false,
     tone: 'emerald',
   },

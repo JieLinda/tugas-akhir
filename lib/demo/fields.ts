@@ -1,5 +1,5 @@
 // Demo-mode candidate copy ("dupp") — the fields the /candidates form shows,
-// all of them editable in demo mode, stored sealed in `candidates_dupp`.
+// all of them editable in demo mode, stored in `candidates_dupp`.
 // Client-safe: types and pure helpers only.
 
 export type DemoTechnicalCompetency = {
@@ -93,7 +93,7 @@ export function parseDemoEditedFields(raw: unknown): DemoEditableField[] | null 
   return Array.from(new Set(raw.filter(isDemoEditableField)));
 }
 
-/** The candidate's REAL values for the editable scalar fields, decrypted. */
+/** The candidate's REAL values for the editable scalar fields. */
 export type DemoRealValues = {
   [K in Exclude<DemoEditableField, 'technicalCompetencies'>]: string | null;
 };
@@ -220,7 +220,7 @@ export const DEMO_ROW_FIELDS: { field: Exclude<DemoEditableField, 'technicalComp
 ];
 
 /**
- * A decrypted candidate row as demo mode presents it: the dupp copy's values
+ * A candidate row as demo mode presents it: the dupp copy's values
  * over the real ones (only the keys the row actually carries, in the naming it
  * uses), and NO photo — demo mode shows no profile photos anywhere, and doing
  * it here means no component can render one by accident.

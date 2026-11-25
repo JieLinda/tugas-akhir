@@ -1,3 +1,4 @@
+import { config, SOURCE_SYNC_OFF_MESSAGE } from "../config.js";
 import mssql from "mssql";
 import {
   getConnectionSettings,
@@ -45,6 +46,8 @@ let poolMPMDS: mssql.ConnectionPool | null = null;
 let poolMPMHRGA: mssql.ConnectionPool | null = null;
 
 async function connect(key: SourceKey): Promise<mssql.ConnectionPool> {
+  // Lowest choke point for every MSSQL path (HTTP, cron, CLI): nothing reaches the network.
+  if (!config.sourceSyncEnabled) throw new Error(SOURCE_SYNC_OFF_MESSAGE);
   const settings = await getConnectionSettings(key);
   const pool = new mssql.ConnectionPool(poolConfigFrom(settings));
   await pool.connect();
@@ -137,6 +140,9 @@ export async function testConnection(
 ): Promise<{ ok: boolean; message: string; server: string; database: string; origin: string }> {
   const settings = await getConnectionSettings(key);
   const describe = `${settings.server}:${settings.port}/${settings.database}`;
+  if (!config.sourceSyncEnabled) {
+    return { ok: false, message: SOURCE_SYNC_OFF_MESSAGE, server: settings.server, database: settings.database, origin: settings.origin };
+  }
 
   if (!settings.server || !settings.database) {
     return {
@@ -156,10 +162,7 @@ export async function testConnection(
     return {
       ok: true,
       message:
-        `Berhasil terhubung ke ${describe}` +
-        (settings.passwordFellBackToEnv
-          ? " (memakai password dari environment karena enkripsi terkunci)"
-          : ""),
+        `Berhasil terhubung ke ${describe}`,
       server: settings.server,
       database: settings.database,
       origin: settings.origin,

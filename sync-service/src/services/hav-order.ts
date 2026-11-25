@@ -24,7 +24,7 @@ export type AutomaticSource = "upload" | "formula" | "none";
 export type AutomaticHav = { quadrant: number | null; source: AutomaticSource };
 export type AutomaticTier = "upload" | "formula";
 
-/** The inputs the automatic HAV is computed from, decrypted. */
+/** The inputs the automatic HAV is computed from. */
 export type HavInputs = {
   /** The HAV upload as the candidate row holds it ("6", "Kuadran #6", …), else null. */
   upload: string | null;

@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { InfoHint } from '@/components/ui/info-hint';
 import { ORIGIN_LABEL, type Origin } from '@/lib/run-compare';
 import type { ComparisonDto } from '@/lib/run-compare-dto';
-import { fmtTiny } from '@/lib/run-compare-format';
+import { fmtTiny, leftCauseText } from '@/lib/run-compare-format';
 import type { Explanation } from '@/lib/run-compare-explain';
 import type { RankingRow, SourceVerdict } from '@/lib/run-compare';
 
@@ -203,13 +203,16 @@ export function RowMarkers({ row }: { row: RankingRow }) {
   );
 }
 
-/** Finalist status A → B in words. */
-export function finalistText(change: RankingRow['finalistChange']): string {
+/** Finalist status A → B in words; a 'keluar' row says why when that is decidable. */
+export function finalistText(
+  change: RankingRow['finalistChange'],
+  leftCause: RankingRow['leftCause'] = null,
+): string {
   switch (change) {
     case 'masuk':
       return 'Masuk N besar';
     case 'keluar':
-      return 'Keluar dari N besar';
+      return leftCauseText(leftCause);
     case 'tetap':
       return 'Tetap finalis';
     case 'tidak':

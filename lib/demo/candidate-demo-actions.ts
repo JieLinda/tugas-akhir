@@ -23,11 +23,9 @@ import * as schema from '@/lib/db/schema';
 import { requirePermission } from '@/lib/rbac';
 import { getCurrentTenantId } from '@/lib/tenant';
 import { ensureLocalUser } from '@/lib/pulse-data';
-import { encryptIfEnabled, LockedError } from '@/lib/crypto/key-store';
 import { isDemoMode } from '@/lib/app-mode';
 import { DISCIPLINE_VALUES, MCU_VALUES } from '@/lib/candidate-values';
 import { loadDemoCopies } from './store';
-import { decryptCandidateValue } from '@/lib/candidate-crypto';
 import { paBaChanged } from '@/lib/hav-effective';
 import { deriveHavQuadrant } from '@/lib/hav-quadrant-derive';
 import { HAV_GAP_LABEL } from '@/lib/talent-mapping';
@@ -68,7 +66,7 @@ async function scopedCandidates(ids: string[]): Promise<{ id: string; tenantId: 
     );
 }
 
-/** The candidate's REAL PA and behaviour, decrypted — what a first demo edit is compared against. */
+/** The candidate's REAL PA and behaviour — what a first demo edit is compared against. */
 async function realPaBa(id: string): Promise<{ performanceGrade: string | null; behaviorRecommendation: string | null }> {
   const [real] = await db
     .select({
@@ -79,8 +77,8 @@ async function realPaBa(id: string): Promise<{ performanceGrade: string | null; 
     .where(eq(schema.candidates.id, id))
     .limit(1);
   return {
-    performanceGrade: decryptCandidateValue(real?.performanceGrade),
-    behaviorRecommendation: decryptCandidateValue(real?.behaviorRecommendation),
+    performanceGrade: real?.performanceGrade || null,
+    behaviorRecommendation: real?.behaviorRecommendation || null,
   };
 }
 
@@ -225,21 +223,15 @@ export async function saveDemoCandidateAction(formData: FormData): Promise<void>
     havTier: pinFormula ? 'formula' : previous?.havTier ?? null,
   };
 
-  let sealed: string | null;
-  try {
-    sealed = await encryptIfEnabled(JSON.stringify(payload));
-  } catch (err) {
-    if (err instanceof LockedError) throw new Error('Data tidak dapat disimpan: kunci enkripsi belum tersedia.');
-    throw err;
-  }
+  const serialized = JSON.stringify(payload);
   const actorId = await ensureLocalUser().catch(() => null);
   await db.transaction(async (tx) => {
     await tx
       .insert(schema.candidatesDupp)
-      .values({ candidateId: row.id, tenantId: row.tenantId, payload: sealed!, sealed: sealed!.startsWith('v1:'), updatedBy: actorId })
+      .values({ candidateId: row.id, tenantId: row.tenantId, payload: serialized, sealed: false, updatedBy: actorId })
       .onConflictDoUpdate({
         target: schema.candidatesDupp.candidateId,
-        set: { payload: sealed!, sealed: sealed!.startsWith('v1:'), updatedBy: actorId, updatedAt: sql`now()` },
+        set: { payload: serialized, sealed: false, updatedBy: actorId, updatedAt: sql`now()` },
       });
     await tx
       .insert(schema.candidateDemoStates)

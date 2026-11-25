@@ -501,7 +501,11 @@ export function RerunDialog(props: RerunDialogProps) {
                 {preview.positionBasisSource === 'parent'
                   ? `milik run induk${preview.positionBasisJobProfile ? ` (job profile ${preview.positionBasisJobProfile})` : ''}`
                   : 'dari kondisi hari ini, karena run induk tidak menyimpannya'}
-                . Enam nilai aspek {preview.poolSize} kandidat lama tidak dihitung ulang.
+                . Enam nilai aspek {preview.poolSize} kandidat lama tidak dihitung ulang, dan skala
+                TOPSIS-nya (pembagi serta titik ideal) juga milik run induk — urutan kandidat lama tidak
+                berubah; kandidat pembanding hanya disisipkan di antaranya.
+                {preview.parentExclusionCount > 0 &&
+                  ` ${preview.parentExclusionCount} tanda "dikecualikan" pada run induk ikut diwariskan.`}
               </p>
               <p className="flex items-center gap-1.5 font-semibold">
                 <Sparkles className="h-3.5 w-3.5 text-emerald-600" aria-hidden />

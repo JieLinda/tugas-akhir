@@ -1,3 +1,4 @@
+import { config, SOURCE_SYNC_OFF_MESSAGE } from "../config.js";
 import { Router, type Request, type Response } from "express";
 import { syncEmployees } from "../services/employee-sync.js";
 import { syncPerformance } from "../services/performance-sync.js";
@@ -8,6 +9,8 @@ import {
   syncEmployeePersonalForEmployee,
 } from "../services/employee-personal-sync.js";
 import { populateCandidates } from "../services/candidate-populate.js";
+import { query as pgQuery } from "../db/postgres.js";
+import { npkKeySql } from "../services/npk.js";
 import { syncDivisions, syncDepartments, syncOrgStructure } from "../services/org-sync.js";
 import {
   syncJobProfiles,
@@ -18,9 +21,11 @@ import {
 import { syncKamusKompetensi } from "../services/kamus-sync.js";
 import { syncHav } from "../services/hav-sync.js";
 import { syncMcu } from "../services/mcu-sync.js";
+import { refreshCandidateTechnicalCompetencies } from "../services/candidate-technical.js";
 import { syncGradeLevels } from "../services/grade-sync.js";
 import { syncBehaviorCompetencies } from "../services/behavior-sync.js";
 import {
+  populatePositions,
   syncEmployeePositions,
   syncPositionBundle,
   syncPositionHierarchy,
@@ -39,14 +44,7 @@ import type { SyncAllResult, SyncResult } from "../types.js";
 
 export const syncRouter = Router() as ReturnType<typeof Router>;
 
-/**
- * Resolve a request's `tenantId` query parameter to the active
- * company→tenant mappings. Returns null when no tenant filter is
- * requested (caller should treat as "no filter").
- *
- * Responds with HTTP 400 and returns the special string `"__invalid__"`
- * if a filter was provided but no active mappings matched.
- */
+
 async function getCompanyFilter(req: Request, res: Response): Promise<CompanyTenantMapping[] | null | "__invalid__"> {
   const tenantIds = parseTenantIds(req.query.tenantId);
   if (tenantIds.length === 0) return null;
@@ -81,7 +79,7 @@ async function tryExcelUpload(
   req: Request,
   res: Response,
   syncRoute: string,
-  afterIngest?: () => Promise<SyncResult>,
+  afterIngest?: FollowUp,
 ): Promise<boolean> {
   const uploadsOnly = req.query?.uploadsOnly === "1" || req.query?.uploadsOnly === "true";
   const result = await ingestUploadedExcelForRoute(syncRoute, { uploadsOnly });
@@ -95,12 +93,18 @@ async function tryExcelUpload(
     return false;
   }
 
+  // Internal: which companies the workbook wrote. Not part of the response.
+  const companyIds = result.companyIds ?? null;
+  delete result.companyIds;
+
   if (result.success && afterIngest) {
     // The workbook is committed; a failure of the follow-up is reported beside
     // it, never as the upload having failed.
     try {
-      const follow = await afterIngest();
-      result.message += ` — ${follow.success ? "" : "GAGAL: "}${follow.message}`;
+      const follow = await afterIngest({ companyIds });
+      // No prefix here: chainSteps marks each failing step itself, and a lone
+      // step's failure message already says it failed.
+      result.message += ` — ${follow.message}`;
     } catch (err) {
       console.error(`[API] ${syncRoute}: follow-up after upload failed:`, err);
       result.message += ` — Sinkronisasi kandidat setelah upload gagal: ${String(err)}`;
@@ -111,15 +115,86 @@ async function tryExcelUpload(
   return true;
 }
 
+
+// ── Every upload takes effect immediately ─────────────────────────────────
+// An upload lands in a sync_* table; the company-scoped tables every page and
+// scoring-service read (positions, candidates + their position history, and
+// candidate_technical_competencies) are DERIVED from those. Without these
+// follow-ups an uploaded workbook only showed after the next Monday full sync.
+// Each one runs only after the workbook is committed, and a failure is reported
+// beside the import, never as the import having failed (tryExcelUpload).
+//
+// What reads what (so each upload re-derives exactly what it feeds):
+//   positions  ← sync_positions + sync_employee_positions + sync_employees (dept/division)
+//   candidates ← sync_employees + sync_employee_positions + sync_positions (title)
+//                + PA, BA, disciplinary, education, HAV, MCU, personal
+//   candidate_technical_competencies ← sync_technical_competencies, per live candidate
+// Hierarchy and grade levels need nothing: no derived table reads the first,
+// and the web reads sync_grade_levels directly.
 /**
- * A PA or BA workbook upload reaches the candidate rows RIGHT AWAY, not on the
- * Monday cron: a candidate whose PA or BA it changes has their HAV re-placed by
- * the formula (drizzle/0098, hav-order.ts), and an upload that takes a week to
- * show on Talent Mapping is an upload nobody believes happened — the same
- * reason the HAV upload applies on the spot. All business units: sync tables
- * are global and the candidate sync matches by NPK.
+ * What an upload changed: the Company IDs its rows were written for, or null
+ * when the source has no company column (or it is unknown) — then every mapped
+ * company is re-derived, as before.
  */
-const populateAfterPaBaUpload = () => populateCandidates(null, { havOrigin: "pa_ba_upload" });
+type UploadScope = { companyIds: string[] | null };
+
+/**
+ * The Company IDs that employ an NPK written to sync_mcu at or after `since`
+ * (a database timestamp taken before the MCU run). MCU rows have no company
+ * column; matching by normalised NPK (npk.ts) is how the candidate sync joins
+ * them, so this re-derives exactly the companies the upload can have changed.
+ */
+async function companiesOfMcuSince(since: Date): Promise<string[]> {
+  const rows = await pgQuery<{ company_id: string }>(
+    `SELECT DISTINCT e.company_id
+       FROM sync_mcu m
+       JOIN sync_employees e ON ${npkKeySql("e.employee_id")} = ${npkKeySql("m.npk")}
+      WHERE m.synced_at >= $1 AND e.company_id IS NOT NULL`,
+    [since],
+  );
+  return rows.map((r) => r.company_id);
+}
+type FollowUp = (scope: UploadScope) => Promise<SyncResult>;
+
+function chainSteps(...steps: Array<(scope: UploadScope) => Promise<SyncResult>>): FollowUp {
+  return async (scope) => {
+    // Nothing written (every row was older than what is stored): nothing to re-derive.
+    if (scope.companyIds && scope.companyIds.length === 0) {
+      return { success: true, synced: 0, total: 0, message: "Tidak ada baris yang berubah; kandidat tidak disinkron ulang." };
+    }
+    const results: SyncResult[] = [];
+    for (const step of steps) results.push(await step(scope));
+    return {
+      success: results.every((r) => r.success),
+      synced: results.reduce((n, r) => n + r.synced, 0),
+      total: results.reduce((n, r) => n + r.total, 0),
+      message: results.map((r) => (r.success ? r.message : `GAGAL: ${r.message}`)).join(" · "),
+    };
+  };
+}
+
+// PA / BA: the candidate sync records the HAV event under "pa_ba_upload", so the
+// HAV formula follows the uploaded PA/BA (docs/talent-mapping.md).
+// Each candidate / position step re-derives only the companies the upload
+// wrote (scope.companyIds). The technical-competency refresh stays global: it
+// is a pure function of the sync_* tables and records no history, so running it
+// wider changes nothing.
+const scoped = (scope: UploadScope) => (scope.companyIds ? { companyIds: scope.companyIds } : {});
+const populateAfterPaBaUpload = chainSteps(
+  (scope) => populateCandidates(null, { havOrigin: "pa_ba_upload", ...scoped(scope) }),
+  () => refreshCandidateTechnicalCompetencies(),
+);
+// Data that feeds candidates only.
+const populateCandidatesAfterUpload = chainSteps(
+  (scope) => populateCandidates(null, scoped(scope)),
+  () => refreshCandidateTechnicalCompetencies(),
+);
+// Data that feeds positions AND candidates (titles, current position, history).
+const populatePositionsAfterUpload = chainSteps(
+  (scope) => populatePositions(scope.companyIds),
+  (scope) => populateCandidates(null, scoped(scope)),
+  () => refreshCandidateTechnicalCompetencies(),
+);
 
 // ── DB MPMDS: Org structure (divisions + departments) ───────────
 
@@ -162,7 +237,7 @@ syncRouter.post("/org", async (req: Request, res: Response) => {
 // ── DB MPMDS: Employees ──────────────────────────────────────────
 
 syncRouter.post("/employees", async (req: Request, res: Response) => {
-  if (await tryExcelUpload(req, res, "employees")) return;
+  if (await tryExcelUpload(req, res, "employees", populatePositionsAfterUpload)) return;
   const filter = await getCompanyFilter(req, res);
   if (filter === "__invalid__") return;
   try {
@@ -177,7 +252,7 @@ syncRouter.post("/employees", async (req: Request, res: Response) => {
 // ── DB MPMHRGA: Position Mapping ───────────────────────────────────
 
 syncRouter.post("/positions/master", async (req: Request, res: Response) => {
-  if (await tryExcelUpload(req, res, "positions/master")) return;
+  if (await tryExcelUpload(req, res, "positions/master", populatePositionsAfterUpload)) return;
   const filter = await getCompanyFilter(req, res);
   if (filter === "__invalid__") return;
   try {
@@ -203,7 +278,7 @@ syncRouter.post("/positions/hierarchy", async (req: Request, res: Response) => {
 });
 
 syncRouter.post("/positions/employees", async (req: Request, res: Response) => {
-  if (await tryExcelUpload(req, res, "positions/employees")) return;
+  if (await tryExcelUpload(req, res, "positions/employees", populatePositionsAfterUpload)) return;
   const filter = await getCompanyFilter(req, res);
   if (filter === "__invalid__") return;
   try {
@@ -216,7 +291,7 @@ syncRouter.post("/positions/employees", async (req: Request, res: Response) => {
 });
 
 syncRouter.post("/positions/competencies", async (req: Request, res: Response) => {
-  if (await tryExcelUpload(req, res, "positions/competencies")) return;
+  if (await tryExcelUpload(req, res, "positions/competencies", () => refreshCandidateTechnicalCompetencies())) return;
   const filter = await getCompanyFilter(req, res);
   if (filter === "__invalid__") return;
   try {
@@ -258,7 +333,7 @@ syncRouter.post("/performance", async (req: Request, res: Response) => {
 // ── API: Disciplinary ────────────────────────────────────────
 
 syncRouter.post("/disciplinary", async (req: Request, res: Response) => {
-  if (await tryExcelUpload(req, res, "disciplinary")) return;
+  if (await tryExcelUpload(req, res, "disciplinary", populateCandidatesAfterUpload)) return;
   const filter = await getCompanyFilter(req, res);
   if (filter === "__invalid__") return;
   try {
@@ -285,7 +360,7 @@ syncRouter.post("/disciplinary/:employeeId", async (req: Request, res: Response)
 // ── API: Education ───────────────────────────────────────────
 
 syncRouter.post("/education", async (req: Request, res: Response) => {
-  if (await tryExcelUpload(req, res, "education")) return;
+  if (await tryExcelUpload(req, res, "education", populateCandidatesAfterUpload)) return;
   const filter = await getCompanyFilter(req, res);
   if (filter === "__invalid__") return;
   try {
@@ -481,7 +556,24 @@ syncRouter.post("/hav", async (req: Request, res: Response) => {
 syncRouter.post("/mcu", async (req: Request, res: Response) => {
   const uploadsOnly = req.query?.uploadsOnly === "1" || req.query?.uploadsOnly === "true";
   try {
+    // The database's clock, so the rows this run stamps (synced_at = NOW()) are
+    // exactly the ones at or after it.
+    const startedAt = (await pgQuery<{ now: Date }>("SELECT now() AS now"))[0]!.now;
     const result = await syncMcu({ uploadsOnly });
+    // MCU reaches candidates only through the candidate sync (mcu_status,
+    // mcu_note), so run it now rather than waiting for Monday. Like the Excel
+    // follow-ups, a failure is reported beside the import.
+    if (result.success && result.synced > 0) {
+      try {
+        // MCU rows carry no company: re-derive the companies that employ the
+        // NPKs this run wrote, not every company.
+        const follow = await populateCandidatesAfterUpload({ companyIds: await companiesOfMcuSince(startedAt) });
+        result.message += ` — ${follow.message}`;
+      } catch (err) {
+        console.error("[API] MCU follow-up candidate sync failed:", err);
+        result.message += ` — Sinkronisasi kandidat setelah MCU gagal: ${String(err)}`;
+      }
+    }
     res.json(result);
   } catch (err) {
     console.error("[API] MCU sync failed:", err);
@@ -531,6 +623,7 @@ syncRouter.post("/behavior-competencies", async (req: Request, res: Response) =>
 // ── Full sync ────────────────────────────────────────────────
 
 export async function runFullSync(companyIds: string[] | null = null, tenantIds: string[] | null = null, tenantSlugs: string[] | null = null): Promise<SyncAllResult> {
+  if (!config.sourceSyncEnabled) throw new Error(SOURCE_SYNC_OFF_MESSAGE);
   const employees = await syncEmployees(companyIds);
   const { divisions, departments } = await syncOrgStructure(companyIds);
   const {

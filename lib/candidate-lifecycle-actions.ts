@@ -7,7 +7,6 @@ import { refuseInDemoMode } from '@/lib/demo/write';
 import { isDemoMode } from '@/lib/app-mode';
 import { maskNpk } from '@/lib/app-mode-shared';
 import * as schema from '@/lib/db/schema';
-import { decryptCandidateRows } from '@/lib/candidate-crypto';
 import { requirePermission } from '@/lib/rbac';
 import { ensureLocalUser } from '@/lib/pulse-data';
 import { getCurrentTenantId } from '@/lib/tenant';
@@ -94,8 +93,7 @@ async function listDeletedCandidatesActionImpl(): Promise<DeletedCandidateRow[]>
   await requirePermission('candidates.view');
   const tenantId = await getCurrentTenantId();
 
-  const rows = decryptCandidateRows(
-    await db
+  const rows = await db
       .select({
         id: schema.candidates.id,
         name: schema.candidates.name,
@@ -114,8 +112,7 @@ async function listDeletedCandidatesActionImpl(): Promise<DeletedCandidateRow[]>
       .orderBy(desc(schema.candidates.deletedAt))
       // A tenant that has been cleared and re-cleared could accumulate a long
       // list; this panel is a recovery tool, not a browsable archive.
-      .limit(200),
-  );
+      .limit(200);
 
   // Demo mode: no NPK leaves the server.
   const demo = await isDemoMode();

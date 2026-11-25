@@ -363,6 +363,75 @@ export function TalentMappingPageClient({
   );
   const gateText = gate.rules.map(gateRuleText).join(' dan ');
 
+  // The page's three rules — who is on the map, which HAV applies, and the
+  // time order — as hover icons beside the grid's title instead of a card
+  // above it. Same text as before; only where it is shown changed.
+  const ruleHints = data.program ? (
+    <>
+      <InfoHint
+        icon={ShieldCheck}
+        title="Siapa yang tampil"
+        className="text-indigo-600/80 dark:text-indigo-400/80"
+      >
+        {gate.rules.length > 0 ? (
+          <p>
+            Semua kandidat aktif yang lolos aturan <strong>Disiplin</strong> Talent Pool ({gateText}).
+            {gate.excluded > 0 && (
+              <>
+                {' '}
+                <strong className="tabular-nums">{gate.excluded}</strong> dari {gate.evaluated} kandidat tidak tampil
+                karena status disiplinnya.
+              </>
+            )}
+          </p>
+        ) : (
+          <p className="text-amber-700 dark:text-amber-300">
+            Talent Pool tidak punya aturan Disiplin yang aktif
+            {gate.disabledCount > 0 ? ' (dinonaktifkan)' : ''} — peta memuat seluruh {gate.evaluated} kandidat aktif.
+          </p>
+        )}
+        <p>
+          Aturan Talent Pool lainnya — HAV, PA, Behavioral Assessment, MCU, masa kerja — <strong>tidak</strong>{' '}
+          menyaring peta: HAV, PA, dan BA adalah input peta ini, dan aturan MCU hanya menandai. Status Lolos Talent Pool
+          tetap ditampilkan per kandidat sebagai keterangan. Atur di halaman{' '}
+          <Link href="/talent-pool" className="font-medium text-primary underline-offset-2 hover:underline">
+            Talent Pool
+          </Link>
+          .
+        </p>
+      </InfoHint>
+      <InfoHint icon={Layers} title="HAV yang berlaku" className="text-violet-600/80 dark:text-violet-400/80">
+        <p>
+          <strong>Penempatan manual</strong> (halaman ini) › <strong>Upload HAV</strong> (Excel, sumber utama) ›{' '}
+          <strong>Rumus PA × BA</strong> bila tanpa upload › belum terpetakan. Satu nilai ini dipakai aturan filter,
+          scoring, profil kandidat, dan Beranda.
+        </p>
+      </InfoHint>
+      <InfoHint
+        icon={Clock}
+        title="Urutan waktu: yang terbaru menang"
+        className="text-slate-600/80 dark:text-slate-300/80"
+      >
+        <p>
+          Penempatan manual berlaku sampai ada <strong>sync setelahnya</strong> yang mengubah HAV otomatis kandidat itu
+          — upload HAV (kapan pun, tidak menunggu cron Senin), HAV.xlsx folder bersama, atau Sync Kandidat yang membawa
+          PA/BA baru dari MSSQL. Sync yang tidak mengubah HAV-nya tidak menyentuh penempatan manual.
+        </p>
+        <p>
+          {data.lastSync ? (
+            <>
+              Sync terakhir yang mengubah HAV otomatis:{' '}
+              <strong className="tabular-nums">{formatDateTime(data.lastSync.at)}</strong> ·{' '}
+              {syncOriginLabel(data.lastSync.origin)}.
+            </>
+          ) : (
+            'Belum ada sync yang mengubah HAV otomatis sejak pencatatan waktu dimulai.'
+          )}
+        </p>
+      </InfoHint>
+    </>
+  ) : null;
+
   return (
     <>
       <DashboardHeader
@@ -405,80 +474,6 @@ export function TalentMappingPageClient({
               Talent Pool
             </Link>
             .
-          </div>
-        )}
-
-        {/* How this page decides who is on it and which HAV applies — in front
-            of the reader, not inside a collapsed section: both rules changed
-            (2026-10) and neither is guessable from the grid. */}
-        {data.program && (
-          <div className="grid gap-3 rounded-xl border bg-card p-4 text-xs leading-relaxed text-muted-foreground lg:grid-cols-3">
-            <div className="space-y-1">
-              <p className="flex items-center gap-1.5 font-semibold text-foreground">
-                <ShieldCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                Siapa yang tampil
-              </p>
-              {gate.rules.length > 0 ? (
-                <p>
-                  Semua kandidat aktif yang lolos aturan <strong>Disiplin</strong> Talent Pool ({gateText}).
-                  {gate.excluded > 0 && (
-                    <>
-                      {' '}
-                      <strong className="tabular-nums text-foreground">{gate.excluded}</strong> dari {gate.evaluated}{' '}
-                      kandidat tidak tampil karena status disiplinnya.
-                    </>
-                  )}
-                </p>
-              ) : (
-                <p className="text-amber-700 dark:text-amber-300">
-                  Talent Pool tidak punya aturan Disiplin yang aktif
-                  {gate.disabledCount > 0 ? ' (dinonaktifkan)' : ''} — peta memuat seluruh {gate.evaluated} kandidat
-                  aktif.
-                </p>
-              )}
-              <p>
-                Aturan Talent Pool lainnya — HAV, PA, Behavioral Assessment, MCU, masa kerja — <strong>tidak</strong>{' '}
-                menyaring peta: HAV, PA, dan BA adalah input peta ini, dan aturan MCU hanya menandai.
-                Status Lolos Talent Pool tetap ditampilkan per kandidat sebagai keterangan. Atur di halaman{' '}
-                <Link href="/talent-pool" className="font-medium text-primary underline-offset-2 hover:underline">
-                  Talent Pool
-                </Link>
-                .
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="flex items-center gap-1.5 font-semibold text-foreground">
-                <Layers className="h-4 w-4 text-violet-600 dark:text-violet-400" />
-                HAV yang berlaku
-              </p>
-              <p>
-                <strong>Penempatan manual</strong> (halaman ini) › <strong>Upload HAV</strong> (Excel, sumber utama) ›{' '}
-                <strong>Rumus PA × BA</strong> bila tanpa upload › belum terpetakan. Satu nilai ini dipakai aturan filter,
-                scoring, profil kandidat, dan Beranda.
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="flex items-center gap-1.5 font-semibold text-foreground">
-                <Clock className="h-4 w-4 text-slate-600 dark:text-slate-300" />
-                Urutan waktu: yang terbaru menang
-              </p>
-              <p>
-                Penempatan manual berlaku sampai ada <strong>sync setelahnya</strong> yang mengubah HAV otomatis kandidat
-                itu — upload HAV (kapan pun, tidak menunggu cron Senin), HAV.xlsx folder bersama, atau Sync Kandidat yang
-                membawa PA/BA baru dari MSSQL. Sync yang tidak mengubah HAV-nya tidak menyentuh penempatan manual.
-              </p>
-              <p>
-                {data.lastSync ? (
-                  <>
-                    Sync terakhir yang mengubah HAV otomatis:{' '}
-                    <strong className="tabular-nums text-foreground">{formatDateTime(data.lastSync.at)}</strong> ·{' '}
-                    {syncOriginLabel(data.lastSync.origin)}.
-                  </>
-                ) : (
-                  'Belum ada sync yang mengubah HAV otomatis sejak pencatatan waktu dimulai.'
-                )}
-              </p>
-            </div>
           </div>
         )}
 
@@ -652,6 +647,7 @@ export function TalentMappingPageClient({
           }}
           onOpenCandidate={setDetailId}
           onDropCandidate={(candidateId, quadrant) => requestMove(candidateId, quadrant, false)}
+          titleHints={ruleHints}
         />
 
         <details className="group rounded-xl border bg-card px-4 py-3 text-sm">

@@ -38,7 +38,7 @@ import { loadJobFamilyTraceBundle, type JobFamilyTraceBundle } from '../lib/job-
 import { buildJobFamilyTraceWorkbook } from '../lib/job-family-trace/workbook';
 import { SHEET } from '../lib/job-family-trace/context';
 import { renderTraceWorkbook } from '../lib/run-trace/xlsx';
-import { TENANTS } from '../lib/tenant';
+import { BUILTIN_TENANTS as TENANTS } from '../lib/tenant';
 
 function arg(name: string): string | null {
   const i = process.argv.indexOf(name);

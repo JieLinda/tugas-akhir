@@ -54,3 +54,25 @@ export const fmtTiny = (x: number): string => {
   const sup = String(Number(exponent)).replace(/[-0-9]/g, (ch) => '⁻⁰¹²³⁴⁵⁶⁷⁸⁹'['-0123456789'.indexOf(ch)]);
   return `${mantissa.replace('.', ',')} × 10${sup}`;
 };
+
+/**
+ * "Keluar dari N besar" split by cause — one wording for the comparison page,
+ * its XLSX export and a child run's own list (position-detail-tabs).
+ * `overtaken_by_comparison` / `pool_shift`: see leftTopNCauseOf (scoring-service
+ * topsis-ranking.ts). Null: the cause is not decidable for this pair.
+ */
+export function leftCauseText(cause: 'overtaken_by_comparison' | 'pool_shift' | null | undefined): string {
+  return cause === 'overtaken_by_comparison'
+    ? 'Keluar dari N besar · disalip kandidat pembanding'
+    : cause === 'pool_shift'
+      ? 'Keluar dari N besar · bergeser karena pool berubah'
+      : 'Keluar dari N besar';
+}
+
+/** What each cause means, for the "?" beside it. */
+export const LEFT_CAUSE_HINT: Record<'overtaken_by_comparison' | 'pool_shift', string> = {
+  overtaken_by_comparison:
+    'Urutan kandidat lama tidak berubah; yang naik ke atasnya hanya kandidat pembanding (kandidat yang tidak ada di run induknya).',
+  pool_shift:
+    'Kandidat yang di run induk berada di bawahnya kini di atasnya, padahal nilai aspek dan bobot keduanya tidak berubah: skala TOPSIS ikut bergeser karena pool berubah. Run pembanding yang dibuat sekarang memakai skala run induk, sehingga ini hanya terjadi pada run lama.',
+};

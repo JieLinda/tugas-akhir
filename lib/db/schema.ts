@@ -29,11 +29,13 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 });
 
 // ── Shared enum-ish string unions (typed at TS layer, validated via check constraints) ──
+// Lightest → heaviest; the order, labels and source codes live in lib/discipline.ts.
 export type DisciplineStatus =
   | 'CLEAR'
-  | 'ST' // Surat Teguran (warning level 1, MINOR) — qualified per methodology doc
-  | 'ACTIVE_SP'
-  | 'SP_UNDER_2_YEARS'
+  | 'ST' // Surat Teguran (source WARNING_LEVEL 4)
+  | 'SP_OVER_2_YEARS' // SP1/SP2 ended ≥ 2 years ago (levels 1/2)
+  | 'SP_UNDER_2_YEARS' // SP1/SP2 ended < 2 years ago
+  | 'ACTIVE_SP' // SP1/SP2 still in force
   | 'SP3'
   | 'SP_FIRST_LAST'
   | 'WARNING' // legacy manual values
@@ -173,6 +175,10 @@ export const tenants = pgTable(
     slug: varchar('slug', { length: 50 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
+    /** Mulia / MSO / ERRO: never removable (drizzle/0100). */
+    isBuiltin: boolean('is_builtin').notNull().default(false),
+    /** Tombstone: a removed company keeps its row so history still names it. */
+    deletedAt: timestamp('deleted_at'),
   },
   (table) => [uniqueIndex('idx_tenants_slug').on(table.slug)]
 );
@@ -364,23 +370,9 @@ export const candidates = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
     employeeId: varchar('employee_id', { length: 100 }),
-    // ── At-rest encrypted columns ──
-    // Everything a candidate's dossier holds EXCEPT id / tenant_id /
-    // employee_id is sealed with the app's AES-256-GCM data key
-    // (lib/crypto/envelope.ts), so a raw database read shows "v1:…" ciphertext
-    // instead of the person's data. The web app, sync-service and
-    // scoring-service each decrypt at their own read boundary (lib/candidate-crypto.ts
-    // and its per-service mirrors). The columns are `text` on purpose:
-    // base64 ciphertext runs ~1.5× longer than the plaintext it wraps, and the
-    // exact length is a function of the value, not the schema. Reading is
-    // write-through-transparent: values not in the "v1:" format pass through
-    // decrypt unchanged, so pre-encryption rows stay readable and the
-    // scripts/encrypt-candidates.ts backfill can migrate them in place.
-    //
-    // Because these values are opaque to SQL, nothing may match, search, sort,
-    // or DISTINCT over them in the database — every one of those (candidate
-    // search, ORDER BY name, grade-range filtering, filter-facet values) must
-    // decrypt first and operate in the application layer.
+    // ── Dossier columns ──
+    // `text` rather than varchar: the stored length is a property of the value,
+    // not the schema.
     name: text('name').notNull(),
     email: text('email'),
     currentPosition: text('current_position'),
@@ -390,17 +382,18 @@ export const candidates = pgTable(
     photoUrl: text('photo_url'),
     grade: text('grade'),
     // ── Attribute fields used by program filter rules ──
-    disciplineStatus: text('discipline_status').default('clear').notNull(),
+    // Upper-case like every synced value; the old 'clear' default failed rules listing 'CLEAR' (drizzle/0101).
+    disciplineStatus: text('discipline_status').default('CLEAR').notNull(),
     mcuStatus: text('mcu_status').default('fit').notNull(),
     /**
-     * Medical note from the sync (ENCRYPTED). Overwritten every Monday run.
+     * Medical note from the sync. Overwritten every Monday run.
      * Null when the source said nothing — and the upsert keeps an existing value
      * in that case rather than blanking it, because one empty upstream file must
      * not erase everybody's note unattended.
      */
     mcuNote: text('mcu_note'),
     /**
-     * Medical note typed by a human on the Kandidat page (ENCRYPTED). NEVER
+     * Medical note typed by a human on the Kandidat page. NEVER
      * written by the sync, which is the whole point: a note somebody entered by
      * hand is often the only medical detail that exists, and an unattended cron
      * overwriting it is the quietest possible way to lose it.
@@ -414,8 +407,7 @@ export const candidates = pgTable(
     /**
      * When a SYNC last changed this candidate's AUTOMATIC HAV (upload › formula
      * PA × BA) — a HAV upload, the shared HAV.xlsx, or candidate-populate
-     * carrying a new PA/BA from the MSSQL syncs (drizzle/0080). Not encrypted:
-     * it says when, never what.
+     * carrying a new PA/BA from the MSSQL syncs (drizzle/0080).
      *
      * It is the clock a Talent Mapping placement is ordered against: a placement
      * is in force only while it is NEWER than this (lib/hav-placements.ts and its
@@ -475,8 +467,6 @@ export const candidates = pgTable(
     // NPK that already has a tombstone — the exact identity break the
     // tombstone prevents.
     uniqueIndex('idx_candidates_tenant_employee_id').on(table.tenantId, table.employeeId),
-    // The mcu_status CHECK was dropped: mcu_status now holds ciphertext, which
-    // cannot be validated against a plaintext domain in the database.
     check('candidates_deleted_mode_check', sql`deleted_mode IS NULL OR deleted_mode IN ('bulk', 'manual')`),
     check(
       'candidates_hav_auto_change_source_check',
@@ -831,6 +821,14 @@ export const scoringRunExclusions = pgTable(
     note: text('note'),
     excludedBy: uuid('excluded_by').notNull().references(() => users.id),
     excludedAt: timestamp('excluded_at').defaultNow().notNull(),
+    /**
+     * drizzle/0102: set when the mark was COPIED from a parent run as a
+     * "Tambah Kandidat Pembanding" child was created — the run where the forum
+     * originally made it (the origin, not the immediate parent, so a grandchild
+     * still names it). Null = marked on this run itself. `excluded_by` /
+     * `excluded_at` keep the original decision's actor and time.
+     */
+    inheritedFromRunId: uuid('inherited_from_run_id').references(() => scoringRuns.id, { onDelete: 'set null' }),
   },
   (table) => [
     uniqueIndex('uq_scoring_run_exclusions_run_candidate').on(table.runId, table.candidateId),
@@ -897,9 +895,8 @@ export type NewScoringRunPoolAspect = typeof scoringRunPoolAspects.$inferInsert;
 //
 // `stage = 'pool'` is written by the web app when the run is created (filter
 // field values and gate outcomes per candidate); `stage = 'engine'` by
-// scoring-service before the run is marked completed. `payload` is JSON SEALED
-// with the app data key (it is candidate data) — read it with
-// `readRunTracePayload` in lib/run-trace/load.ts, never JSON.parse it directly.
+// scoring-service before the run is marked completed. `payload` is JSON
+// (candidate data) — read it through lib/run-trace/load.ts.
 // A completed run's trace is immutable (I-1, trigger in 0092). Shape:
 // `scoring-service/src/run-trace-types.ts`.
 export const scoringRunTraces = pgTable(
@@ -912,7 +909,7 @@ export const scoringRunTraces = pgTable(
     stage: varchar('stage', { length: 16 }).notNull(),
     version: integer('version').notNull(),
     payload: text('payload').notNull(),
-    /** False only on an install that never enabled encryption. */
+    /** Legacy column; always false. */
     sealed: boolean('sealed').notNull().default(false),
     byteSize: integer('byte_size').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -1526,7 +1523,7 @@ export type JobFamilyTitleEmbed = typeof jobFamilyTitleEmbed.$inferSelect;
 // "dupp": the demo copy of a candidate's displayed fields, upserted by the
 // demo-mode edit and read INSTEAD of `candidates` for that candidate while in
 // demo mode. `candidates` itself is never written by demo mode. Reload deletes
-// the row. `payload` is a sealed DemoCandidateFields JSON (lib/demo/fields.ts).
+// the row. `payload` is a DemoCandidateFields JSON (lib/demo/fields.ts).
 export const candidatesDupp = pgTable(
   'candidates_dupp',
   {
@@ -2393,33 +2390,6 @@ export const jobFamilyOptimizationExpectations = pgTable(
   (table) => [index('idx_jf_opt_expectations_hash_created').on(table.configHash, table.createdAt)],
 );
 
-// ── Encryption key material (drizzle/0046_app_encryption_keys.sql) ───────────
-// Holds the DATA key sealed under the MASTER key the user holds. The master key
-// is never persisted anywhere — losing it makes every value encrypted under
-// this DEK permanently unreadable, which is the point.
-export const appEncryptionKeys = pgTable(
-  'app_encryption_keys',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    label: varchar('label', { length: 80 }).default('default').notNull(),
-    /** The 32-byte DEK, sealed under the master key. */
-    wrappedDek: text('wrapped_dek').notNull(),
-    /** A fixed known string sealed under the DEK — proves a master key is right. */
-    verifier: text('verifier').notNull(),
-    isActive: boolean('is_active').default(true).notNull(),
-    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-  // The "at most one active row" rule is a partial unique index created in the
-  // migration; Drizzle cannot express `UNIQUE ((is_active)) WHERE is_active`, so
-  // it is intentionally absent here. Do not "fix" this by adding a plain unique
-  // index — that would forbid more than one INACTIVE row and break rotation.
-  () => []
-);
-
-export type AppEncryptionKey = typeof appEncryptionKeys.$inferSelect;
-
 // ── MSSQL source connections (drizzle/0047_sync_source_connections.sql) ──────
 // UI-editable replacements for DB_MPMDS_* / DB_MPMHRGA_*. An absent or inactive
 // row means "fall back to the environment variables", so an untouched
@@ -2433,7 +2403,7 @@ export const syncSourceConnections = pgTable(
     server: varchar('server', { length: 255 }).notNull(),
     port: integer('port').default(1433).notNull(),
     username: varchar('username', { length: 128 }).notNull(),
-    /** Sealed with the data key. NULL means "no password here — use the env var". */
+    /** NULL means "no password here — use the env var". */
     passwordEncrypted: text('password_encrypted'),
     databaseName: varchar('database_name', { length: 128 }).notNull(),
     encrypt: boolean('encrypt').default(true).notNull(),
@@ -2896,14 +2866,11 @@ export type NewTalentDataStaging = typeof talentDataStaging.$inferInsert;
 //                possibly, superseded a hand placement). Together they are the
 //                ORDER of sync and manual events, which is what decides which
 //                one is in force. old/new_box stay NULL (the 5-Box is derivable
-//                from the quadrant, and storing it in plaintext beside an
-//                encrypted quadrant would leak the half that matters); the
-//                quadrants, the automatic answer at the time and the
-//                justification are SEALED like `candidates.hav_quadrant`.
+//                from the quadrant); the quadrants, the automatic answer at
+//                the time and the justification are stored in their own
+//                columns.
 // Who did it — `changed_by_user_id` plus a `changed_by_username` snapshot that
-// survives the user row being deleted, or `sync:<job>` for a sync — and when
-// stay plaintext, because "who moved this person, and when" is exactly what the
-// trail exists to answer.
+// survives the user row being deleted, or `sync:<job>` for a sync — and when.
 export type TalentMappingKind = 'five_box' | 'hav16';
 /**
  * 'manual_place'          a placement was written by a reviewer.
@@ -2960,7 +2927,7 @@ export const talentAuditLogs = pgTable(
     oldBox: varchar('old_box', { length: 10 }).$type<TalentBox>(),
     /** NOT NULL until drizzle/0078; null on 'hav16' rows (see above). */
     newBox: varchar('new_box', { length: 10 }).$type<TalentBox>(),
-    /** Mandatory when new_box != system_recommended_box (enforced in the action). ENCRYPTED on 'hav16' rows. */
+    /** Mandatory when new_box != system_recommended_box (enforced in the action). */
     justificationReason: text('justification_reason'),
     timestamp: timestamp('timestamp', { withTimezone: true }).defaultNow().notNull(),
     // ── drizzle/0078: Talent Mapping (16-box HAV) ──
@@ -2968,12 +2935,12 @@ export const talentAuditLogs = pgTable(
     /** SET NULL, not CASCADE: an audit row must outlive what it describes. */
     candidateId: uuid('candidate_id').references(() => candidates.id, { onDelete: 'set null' }),
     action: varchar('action', { length: 30 }).$type<TalentMappingAuditAction>(),
-    /** ENCRYPTED "1".."16"; null = the candidate was not on the map before the move. */
+    /** "1".."16"; null = the candidate was not on the map before the move. */
     oldQuadrant: text('old_quadrant'),
-    /** ENCRYPTED "1".."16"; null = the move cleared the placement and nothing automatic places them. */
+    /** "1".."16"; null = the move cleared the placement and nothing automatic places them. */
     newQuadrant: text('new_quadrant'),
     /**
-     * ENCRYPTED — the AUTOMATIC answer at the moment of the move (upload, else
+     * The AUTOMATIC answer at the moment of the move (upload, else
      * formula; drizzle/0079 renamed it from formula_quadrant). Null = none.
      */
     baselineQuadrant: text('baseline_quadrant'),
@@ -3018,24 +2985,21 @@ export type NewTalentAuditLog = typeof talentAuditLogs.$inferInsert;
 // no longer for the reason it was made.
 //
 // History lives in `talent_audit_logs` ('hav16' rows); this table is state.
-// quadrant / baseline_quadrant / justification are ENCRYPTED, for the same
-// reason `candidates.hav_quadrant` is: which box a named person sits in is the
-// datum this table exists to hold.
 export const talentMappingPlacements = pgTable(
   'talent_mapping_placements',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     candidateId: uuid('candidate_id').notNull().references(() => candidates.id, { onDelete: 'cascade' }),
-    /** ENCRYPTED "1".."16". */
+    /** "1".."16". */
     quadrant: text('quadrant').notNull(),
-    /** ENCRYPTED "1".."16" — the automatic answer this placement overrode; null = there was none. */
+    /** "1".."16" — the automatic answer this placement overrode; null = there was none. */
     baselineQuadrant: text('baseline_quadrant'),
     baselineSource: varchar('baseline_source', { length: 10 })
       .$type<TalentMappingBaselineSource>()
       .default('none')
       .notNull(),
-    /** ENCRYPTED. Mandatory — every deviation from the automatic answer carries its reason. */
+    /** Mandatory — every deviation from the automatic answer carries its reason. */
     justification: text('justification').notNull(),
     placedBy: uuid('placed_by').references(() => users.id, { onDelete: 'set null' }),
     placedByUsername: varchar('placed_by_username', { length: 255 }),

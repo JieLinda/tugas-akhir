@@ -10,6 +10,7 @@ import {
   countDisabledFilterRules,
   countEnabledFilterRules,
   normalizeFilterTree,
+  validateFilterTree,
   toFilterTreeSet,
 } from '@/lib/filter-rules';
 import { isPositionProgram, listProgramTemplates } from '@/lib/programs';
@@ -114,6 +115,12 @@ async function updateTalentPoolFilterActionImpl(input: {
   }
 
   const tree = normalizeFilterTree(input.filterTree);
+  // Refused, not stored: every finding is a rule that would reject everyone or
+  // nobody without saying so (lib/filter-rules.ts validateFilterTree).
+  const problems = validateFilterTree(tree);
+  if (problems.length > 0) {
+    return { ok: false, message: `Aturan filter belum bisa disimpan: ${problems.join(' ')}`, data: null };
+  }
   const enabled = countEnabledFilterRules(tree);
   const disabled = countDisabledFilterRules(tree);
   const appliedFrom = Array.isArray(input.appliedFrom)

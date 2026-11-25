@@ -125,9 +125,20 @@ mode lama.
   status finalisnya berubah (masuk atau keluar dari N besar).
 - **Bentuk:** "Peringkat {nama} {naik|turun} {n} tingkat, dari {A} ke {B}
   (kecocokan {A} → {B}, {Δ pp})[ dan kini masuk N besar | dan kini keluar dari
-  N besar]. Penyumbang terbesar: {kriteria} ({arah}); {kriteria} ({arah})."
+  N besar[ karena disalip kandidat pembanding | karena skala pool bergeser]].
+  Penyumbang terbesar: {kriteria} ({arah}); {kriteria} ({arah})."
   Bila peringkat tetap tetapi status finalis berubah, kalimatnya dimulai dengan
   "Peringkat {nama} tetap {B}".
+- **Penyebab keluar dari N besar** hanya ditulis bila bobot, kriteria aktif,
+  dan nilai aspek A dan B sama (hanya pool yang berbeda). "Disalip kandidat
+  pembanding": setiap kandidat yang kini di atasnya dan sebelumnya tidak adalah
+  kandidat yang tidak ada di A. "Skala pool bergeser": ada kandidat yang di A
+  berada di bawahnya kini di atasnya — pembalikan peringkat TOPSIS klasik
+  karena pembagi dan titik ideal ikut berubah. Run "Tambah Kandidat Pembanding"
+  yang dibuat sejak skala TOPSIS induk dibekukan tidak dapat menghasilkan yang
+  kedua; run lama bisa. Aturannya satu fungsi, `leftTopNCauseOf`
+  (`scoring-service/src/topsis-ranking.ts`), yang juga dipakai engine untuk
+  penanda di daftar hasil run turunan.
 - **Penyumbang:** dua kriteria dengan perubahan sumbangan terbesar terhadap
   jarak kuadrat, |Δ(v − ideal⁺)²| + |Δ(v − ideal⁻)²|, yang lolos ambang 1%.
   Bila tidak ada yang lolos, bagian "Penyumbang terbesar" tidak ditulis.

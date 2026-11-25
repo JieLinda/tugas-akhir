@@ -10,7 +10,8 @@ import { ChevronDown, Gavel } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ComparisonDto } from '@/lib/run-compare-dto';
 import type { RankingRow } from '@/lib/run-compare';
-import { fmtCloseness, fmtPp } from '@/lib/run-compare-format';
+import { fmtCloseness, fmtPp, LEFT_CAUSE_HINT } from '@/lib/run-compare-format';
+import { InfoHint } from '@/components/ui/info-hint';
 import { finalistText, membershipLabel, RankDelta, RowMarkers } from './parts';
 
 type Filter = 'changed' | 'finalists' | 'comparison';
@@ -198,8 +199,13 @@ export function ComparisonRankingTable({
                                 : 'text-muted-foreground',
                         )}
                       >
-                        {finalistText(r.finalistChange)}
+                        {finalistText(r.finalistChange, r.leftCause)}
                       </span>
+                      {r.finalistChange === 'keluar' && r.leftCause && (
+                        <InfoHint className="ml-1 align-middle" label="Penyebab keluar dari N besar">
+                          {LEFT_CAUSE_HINT[r.leftCause]}
+                        </InfoHint>
+                      )}
                     </td>
                     {!compact && (
                       <td className="px-2 py-1.5">

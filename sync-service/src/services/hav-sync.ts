@@ -5,13 +5,14 @@ import { pool } from '../db/postgres.js';
 import { config } from '../config.js';
 import { ensureNetworkShareAccess, assertPathAccessible } from './network-share.js';
 import { discardSummary, discardUploaded, uploadedWorkbook } from './upload-store.js';
-import { resolveWriteMode } from './crypto.js';
 import {
   applyHavUploadChanges,
   detectHavUploadChanges,
   type HavUploadApplyResult,
 } from './hav-supersede.js';
 import type { SyncResult } from '../types.js';
+import { npkKey, npkKeySql } from './npk.js';
+import { unknownNpkWarning } from './npk-check.js';
 
 interface HavRow {
   NPK?: string;
@@ -115,36 +116,28 @@ export async function syncHav(
     console.log(`[HAV] Fetched ${rows.length} rows from sheet: ${sheetName}`);
 
     // Normalize rows and extract quadrant
-    const normalized = rows
-      .map((row) => {
-        const npk = (row.NPK || '').toString().trim();
-        const nama = (row.NAMA || '').toString().trim();
-        const quadrant = normalizeQuadrant(row.Quadrant);
-
-        return { npk, nama, quadrant };
-      })
-      .filter((r) => r.npk && r.quadrant); // Only include rows with valid NPK
+    const byNpk = new Map<string, { npk: string; nama: string; quadrant: string | null }>();
+    for (const row of rows) {
+      // Stored and matched in ONE spelling (npk.ts): "5123" and "05123" are one
+      // person, as they are everywhere else that joins on LPAD(…, 5, '0').
+      const npk = npkKey((row.NPK || '').toString());
+      const nama = (row.NAMA || '').toString().trim();
+      const quadrant = normalizeQuadrant(row.Quadrant);
+      if (!npk || !quadrant) continue; // Only include rows with valid NPK
+      // One row per person: two spellings of one NPK in a workbook would hit the
+      // same key twice in one INSERT, which Postgres refuses. Last row wins, as
+      // it did for an exact duplicate before.
+      byNpk.set(npk, { npk, nama, quadrant });
+    }
+    const normalized = Array.from(byNpk.values());
 
       console.log("[HAV] NormalizedRow", normalized);
       
 
-    // A changed quadrant is written onto candidates (sealed) right away — on
-    // whatever day the file arrives, not only on the Monday cron — timestamped,
-    // and supersedes any OLDER Talent Mapping placement, inside the same
-    // transaction (hav-supersede.ts). Locked means none of that can be done
-    // honestly, so the upload is refused whole rather than landing in sync_hav
-    // while the HAV in force silently keeps an override it was meant to replace.
-    const writeMode = await resolveWriteMode();
-    if (writeMode === 'locked') {
-      return {
-        success: false,
-        synced: 0,
-        total: normalized.length,
-        message:
-          'Upload HAV tidak diterapkan: enkripsi aktif tetapi kunci tidak tersedia, sehingga HAV kandidat dan penempatan manual yang tergantikan tidak dapat ditulis. Buka kunci di Keamanan lalu ulangi.',
-      };
-    }
-
+    // A changed quadrant is written onto candidates right away — on whatever
+    // day the file arrives, not only on the Monday cron — timestamped, and
+    // supersedes any OLDER Talent Mapping placement, inside the same
+    // transaction (hav-supersede.ts).
     const BATCH = 500;
     let synced = 0;
     let added = 0;
@@ -173,6 +166,18 @@ export async function syncHav(
       // to trust it.
       const beforeRow = await client.query<{ n: string }>('SELECT count(*)::int AS n FROM sync_hav');
       const before = Number(beforeRow.rows[0]?.n ?? 0);
+
+      // A row stored under ANOTHER spelling of an NPK in this workbook ("5123"
+      // before normalisation) is the same person; replace it rather than keep
+      // two rows for one employee. Counted before this, so the summary still
+      // reads that person as updated, not added. Nobody absent from the
+      // workbook is touched.
+      await client.query(
+        `DELETE FROM sync_hav
+          WHERE ${npkKeySql('npk')} = ANY($1::text[])
+            AND npk <> ALL($1::text[])`,
+        [normalized.map((r) => r.npk)],
+      );
 
       for (let i = 0; i < normalized.length; i += BATCH) {
         const batch = normalized.slice(i, i + BATCH);
@@ -204,7 +209,7 @@ export async function syncHav(
       updated = synced - added;
       preserved = before - updated;
 
-      applied = await applyHavUploadChanges(client, changes, writeMode, fromUpload ? 'hav_upload' : 'hav_folder');
+      applied = await applyHavUploadChanges(client, changes, fromUpload ? 'hav_upload' : 'hav_folder');
 
       await client.query('COMMIT');
     } catch (err) {
@@ -224,9 +229,11 @@ export async function syncHav(
     // next run doesn't silently re-import a stale copy that the user believes
     // they already replaced.
     const discarded = fromUpload ? discardUploaded([filePath]) : { removed: 0, failed: [] };
+    const unknown = await unknownNpkWarning(normalized.map((r) => r.npk), 'HAV');
 
     return {
       success: true,
+      ...(unknown ? { warnings: [unknown] } : {}),
       synced,
       total: normalized.length,
       message:
@@ -237,7 +244,8 @@ export async function syncHav(
         (applied.placementsSuperseded > 0
           ? `, ${applied.placementsSuperseded} penempatan manual Talent Mapping yang lebih lama digantikan (tercatat di riwayat)`
           : '') +
-        discardSummary(discarded),
+        discardSummary(discarded) +
+        (unknown ? ` Peringatan: ${unknown}` : ''),
     };
   } catch (err) {
     console.error('[HAV] Sync failed:', err);

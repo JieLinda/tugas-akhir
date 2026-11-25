@@ -778,7 +778,6 @@ Chip HAV; seksi HAV MAPPING; baris "HAV Kuadran" di Dossier (tanpa bar, karena b
 | Baris | Yang tampil |
 |---|---|
 | Run AHP + TOPSIS | Kuadran yang dicatat mesin saat menilai; `—` bila kandidat tidak punya HAV saat itu |
-| Kuadran tersimpan terenkripsi dan kunci tidak tersedia | **"terkunci"** |
 | Cetak Kandidat Terpilih untuk kandidat yang tidak ada di run yang sedang dibuka | HAV profil, berlabel **(data terkini)** |
 
 Sebelumnya, baris hasil run menampilkan HAV yang berlaku **hari ini** (penempatan manual › unggahan › rumus), sehingga kuadran di chip bisa tidak cocok dengan skor HAV run. (`recordedHavQuadrant` di `lib/run-score-breakdown.ts`, `runHavText` di `lib/analysis-utils.ts`.)
@@ -1749,22 +1748,23 @@ Tombol suara 👍 / 👎 pada riwayat run, monitor "Umpan Balik AI" di Tata Kelo
 ## 29. Dari mana data HR kandidat berasal (hasil sinkronisasi)
 
 ### 29.1 Status Disiplin
-Dievaluasi berurutan, kondisi pertama yang cocok menang:
+Kode `WARNING_LEVEL` dibaca sesuai kode sumber HR (dicocokkan dengan teks `SANCTION_GIVEN`, 2026-11-25): **1 = SP1, 2 = SP2, 3 = SP3, 4 = ST (Surat Teguran), 5 = SP Pertama & Terakhir**. Satu orang bisa punya beberapa catatan; **catatan terberat yang menentukan**. Urutan dari yang paling ringan ke paling berat (keputusan HR):
 
-| Kondisi | Status |
-|---|---|
-| Tingkat peringatan **5** | `SP_FIRST_LAST` |
-| Tingkat peringatan **3** | `SP3` |
-| Tingkat **2** dan **belum kadaluarsa** | `ACTIVE_SP` |
-| Tingkat **2**, sudah kadaluarsa **kurang dari 2 tahun** | `SP_UNDER_2_YEARS` |
-| Tingkat peringatan **1** (pelanggaran minor) | `ST` — **tetap lolos** filter bawaan |
-| Selain itu / tidak ada catatan | `CLEAR` |
+| # | Status | Kondisi |
+|---|---|---|
+| 1 | `CLEAR` — Bersih | tidak ada catatan (atau hanya kode di luar 1–5) |
+| 2 | `ST` — Surat Teguran | tingkat **4** |
+| 3 | `SP_OVER_2_YEARS` — SP1/SP2 tidak aktif ≥ 2 tahun | tingkat **1 atau 2**, berakhir **2 tahun lalu atau lebih** |
+| 4 | `SP_UNDER_2_YEARS` — SP1/SP2 tidak aktif < 2 tahun | tingkat **1 atau 2**, berakhir **kurang dari 2 tahun** lalu |
+| 5 | `ACTIVE_SP` — SP1/SP2 aktif | tingkat **1 atau 2**, `EXPIRY_DATE` hari ini atau sesudahnya (atau kosong) |
+| 6 | `SP3` / `SP_FIRST_LAST` | tingkat **3** / **5**, tanpa batas waktu |
 
-- SP tingkat 2 yang sudah lewat **lebih dari 2 tahun** jatuh ke `CLEAR` — masa berlaku efektif 2 tahun setelah kadaluarsa.
-- Tingkat 5 dan 3 **tidak punya batas waktu** — sekali ada, permanen.
-- Label yang tampil: `clear` → **Bersih**, `warning` → **Warning**, `sanction` → **Sanksi aktif**, lainnya → `-`.
+- **Siapa yang lolos tidak ditentukan di sini**, tetapi oleh aturan filter disiplin program (halaman Talent Pool → Aturan Filter, atau Tata Kelola). Aturan bawaan meloloskan `CLEAR`, `ST`, dan `SP_OVER_2_YEARS`. Pilihan nilai di editor tampil dalam urutan di atas, jadi "lolos sampai tingkat X" berarti memilih tingkat 1 sampai X. Aturan disiplin Talent Pool juga menentukan siapa yang tampil di Talent Mapping.
+- **SP1 diperlakukan sama dengan SP2.** Sebelum 2026-11-25 sinkronisasi membaca tingkat 1 sebagai ST (lolos) dan tidak mengenali tingkat 4 (jadi `CLEAR`). Akibatnya setiap SP1 tercatat "ST", dan setiap Surat Teguran tercatat "Bersih".
+- `SP_OVER_2_YEARS` adalah status baru. Dulu orang dengan SP yang sudah berakhir 2 tahun atau lebih tercatat `CLEAR`. `drizzle/0101` menambahkan nilai ini ke setiap aturan disiplin tersimpan yang memuat `CLEAR`, supaya keputusan untuk orang tersebut tidak berubah.
+- Sumber kode: `DISCIPLINE_STATUS_SQL` di `sync-service/src/services/candidate-populate.ts`. Urutan dan label ada di `lib/discipline.ts`.
 
-> **Jebakan huruf besar/kecil:** nilai bawaan kolom di basis data adalah `clear` (huruf kecil) sedangkan sinkronisasi menulis `CLEAR` (huruf besar), dan aturan filter membandingkan **persis**. Kandidat yang barisnya dibuat di luar jalur sinkronisasi (manual/seed/migrasi) karenanya **otomatis GAGAL** hard filter disiplin — padahal label yang tampil tetap **"Bersih"**. Inilah yang membuat gejalanya membingungkan: **tampilannya bersih, filternya gugur.**
+> **Huruf besar/kecil (sudah diperbaiki).** Nilai bawaan kolom dulu `clear` (huruf kecil), sedangkan sinkronisasi menulis `CLEAR`, dan aturan filter membandingkan persis. Akibatnya kandidat yang dibuat di luar sinkronisasi gagal filter disiplin padahal labelnya "Bersih". `drizzle/0101` menyeragamkan semua nilai ke huruf besar dan mengubah nilai bawaan kolom menjadi `CLEAR`.
 
 ### 29.2 Status MCU
 `fit` / `fit_with_note` / `unfit` (teks yang mengandung "unfit" → unfit; mengandung "fit" → fit_with_note bila juga ada "note", selain itu fit; selain itu kosong).
@@ -1772,7 +1772,7 @@ Dievaluasi berurutan, kondisi pertama yang cocok menang:
 
 > Karena aturan MCU hanya menandai (Bab 22.10), bawaan `fit` ini hanya menentukan apakah kandidat **ditandai**, bukan apakah ia dinilai atau berapa skornya: orang yang belum pernah diperiksa tidak ditandai, sama seperti orang yang sudah diperiksa dan dinyatakan sehat.
 
-**Keterangan medisnya kini disimpan.** Kolom `Kesimpulan` dulu dimampatkan menjadi satu token lalu dibuang — `"FIT (dengan note tekanan darah)"` menjadi `fit_with_note` dan *"tekanan darah"* hilang. Sekarang teks aslinya masuk `sync_mcu.kesimpulan_raw`, ditambah kolom baru opsional `Keterangan` pada templat Excel. Di sisi kandidat ada DUA kolom, keduanya terenkripsi:
+**Keterangan medisnya kini disimpan.** Kolom `Kesimpulan` dulu dimampatkan menjadi satu token lalu dibuang — `"FIT (dengan note tekanan darah)"` menjadi `fit_with_note` dan *"tekanan darah"* hilang. Sekarang teks aslinya masuk `sync_mcu.kesimpulan_raw`, ditambah kolom baru opsional `Keterangan` pada templat Excel. Di sisi kandidat ada DUA kolom:
 
 | kolom | sumber | ditimpa sinkronisasi? |
 |---|---|---|

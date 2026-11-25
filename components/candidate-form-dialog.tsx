@@ -10,6 +10,7 @@ import { deriveHavQuadrant } from '@/lib/hav-quadrant-derive';
 import { HAV_GAP_LABEL } from '@/lib/talent-mapping';
 import { HAV_QUADRANTS, formatHavQuadrant, normalizeHavQuadrant } from '@/lib/hav-quadrant';
 import { FIELD_VALUE_OPTIONS } from '@/lib/candidate-field-values';
+import { DISCIPLINE_LEVELS, canonicalDisciplineStatus } from '@/lib/discipline';
 import { useFormStatus } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
@@ -61,16 +62,10 @@ const EMPTY_OPTION_VALUE = '__empty__';
 /** The five PA letter grades, in order. Same set the filter engine recognizes. */
 const PA_GRADE_OPTIONS = ['A', 'B', 'C', 'D', 'E'] as const;
 
+// Lightest → heaviest, the one order lib/discipline.ts defines.
 const disciplineOptions: ComboboxOption[] = [
   { value: EMPTY_OPTION_VALUE, label: '— pilih —' },
-  { value: 'CLEAR', label: 'Clear' },
-  { value: 'ST', label: 'ST (Surat Teguran)' },
-  { value: 'ACTIVE_SP', label: 'Active SP' },
-  { value: 'SP_UNDER_2_YEARS', label: 'SP < 2 Years' },
-  { value: 'SP3', label: 'SP3' },
-  { value: 'SP_FIRST_LAST', label: 'SP First/Last' },
-  { value: 'WARNING', label: 'Warning' },
-  { value: 'SANCTION', label: 'Sanction' },
+  ...DISCIPLINE_LEVELS.map((l) => ({ value: l.value, label: l.optionLabel })),
 ];
 
 const mcuOptions: ComboboxOption[] = [
@@ -166,7 +161,8 @@ export function CandidateFormDialog({
   );
   const raw = candidate?.raw;
   const [disciplineStatus, setDisciplineStatus] = useState(() =>
-    candidate ? toComboboxValue(raw?.disciplineStatus) : 'CLEAR',
+    // Canonical case: an old lower-case 'clear' would otherwise match no option.
+    candidate ? toComboboxValue(raw?.disciplineStatus ? canonicalDisciplineStatus(raw.disciplineStatus) : raw?.disciplineStatus) : 'CLEAR',
   );
   const [mcuStatus, setMcuStatus] = useState(() =>
     candidate ? toComboboxValue(raw?.mcuStatus) : 'fit',

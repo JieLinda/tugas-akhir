@@ -28,7 +28,7 @@ def write(out_dir: Path, as_of: date) -> Path:
     path = out_dir / "ringkasan-data-demo.md"
     first, last = ds.npk_range()
     tp = [e for e in ds.EMPLOYEES if e.expect_talent_pool]
-    on_map = [e for e in ds.EMPLOYEES if e.expect_discipline in ("CLEAR", "ST")]
+    on_map = [e for e in ds.EMPLOYEES if e.expect_discipline in ("CLEAR", "ST", "SP_OVER_2_YEARS")]
     unplaced = [e for e in on_map if e.expect_hav is None]
     lines = [
         "# Ringkasan data demo",

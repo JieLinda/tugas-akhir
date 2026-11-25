@@ -142,8 +142,8 @@ export type PositionCandidate = {
   havQuadrant: string | null;
   /**
    * On a ranked row: whether `havQuadrant` is the quadrant the run scored
-   * (`run`), was never recorded by it (`not_recorded`, `havQuadrant` null), or
-   * is sealed and unreadable (`locked`). Absent on rows that are not run results.
+   * (`run`) or was never recorded by it (`not_recorded`, `havQuadrant` null).
+   * Absent on rows that are not run results.
    * Display through `runHavText` (lib/analysis-utils.ts).
    */
   havQuadrantSource?: HavQuadrantSource;

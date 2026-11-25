@@ -78,3 +78,6 @@ sync-service/uploads/
 # sync service's copy of the SAME key untracked-but-committable.
 **/secrets/*.key
 **/secrets/*.key.*
+
+# Office lock files (created while a document is open in Word/Excel)
+~$*

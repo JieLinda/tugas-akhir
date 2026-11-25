@@ -169,7 +169,6 @@ melepas edit itu dan rumus kembali berlaku. Reload menghapus salinan.
   yang berubah saat itu juga. Upload Excel PA atau BA juga langsung menjalankan
   Sync Kandidat (`populateAfterPaBaUpload` di `sync-service/src/routes/sync.ts`)
   supaya perubahan PA/BA menempatkan ulang HAV hari itu, bukan Senin depan.
-  Saat enkripsi aktif tetapi terkunci, upload ditolak utuh.
 - **BA disinkronkan sebelum Sync Kandidat** di `runFullSync`.
 - **`hav_quadrant` di Sync Kandidat di-COALESCE**: kandidat yang tidak punya
   baris `sync_hav` mempertahankan HAV-nya.
@@ -329,7 +328,7 @@ Semuanya di server:
 - **Kandidat harus ada di peta** saat itu (lolos aturan Disiplin).
 - **Tampilan harus mutakhir** (`expectedQuadrant`), dan tulisannya sendiri
   bersyarat: placement hanya diubah bila barisnya masih persis yang dibaca
-  (nilai tersegel dipakai sebagai token versi). Dua reviewer yang memindahkan
+  (`updated_at` yang ditulis database dipakai sebagai token versi). Dua reviewer yang memindahkan
   orang yang sama bersamaan: tepat satu yang menang.
 - Penempatan dan baris auditnya ditulis dalam **satu transaksi**, dengan jam
   database.
@@ -349,7 +348,7 @@ lain (profil, scoring); jumlahnya disebut di tab Riwayat.
 
 | Pembaca / penulis | Perubahan |
 |---|---|
-| Aturan filter (Talent Pool, pool scoring) | `loadFilterableCandidates*` (`lib/programs.ts`) dan loader Talent Pool membaca HAV yang berlaku, dan **membuka kunci enkripsi sebelum dekripsi** — Next.js merender layout (yang membuka kunci) dan halaman secara paralel, sehingga request pertama setelah restart dulu bisa menilai baris tersegel sebagai kosong (diukur: tepat satu baris Mulia salah sisi) |
+| Aturan filter (Talent Pool, pool scoring) | `loadFilterableCandidates*` (`lib/programs.ts`) dan loader Talent Pool membaca HAV yang berlaku |
 | Talent Pool | Panel aturan: Aktif/Nonaktif per aturan, keterangan per aturan, pratinjau dampak ke peta, kartu "Di Talent Mapping" |
 | Scoring (AHP+TOPSIS) | Loader kandidat di scoring-service memakai `withEffectiveHav` dengan predikat jam yang sama; run mencatat `havSource`. (Loader kedua milik AI Tournament ikut terhapus bersama metode itu.) |
 | Profil, daftar, detail kandidat | Menampilkan HAV yang berlaku + sumbernya; `raw.havQuadrant` tetap nilai Excel |
@@ -399,10 +398,6 @@ riwayatnya tidak diperbarui.
 | `timestamp` | kapan; untuk peristiwa sync sama dengan `hav_auto_changed_at` yang ditulisnya |
 
 Tab **Riwayat HAV** menampilkan semuanya berurutan dengan saringan *Manual / Sync*.
-
-**Enkripsi.** Kuadran, baseline, dan alasan di kedua tabel disegel seperti
-`candidates.hav_quadrant`. Siapa, kapan, dan kepada siapa tetap polos — begitu
-juga jam sync di `candidates`, yang menyebut kapan, bukan apa.
 
 ## Privasi
 

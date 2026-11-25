@@ -4,8 +4,9 @@ Hasil analisis balik dari sistem yang berjalan
 
 | | |
 |---|---|
-| Versi dokumen | 1.6 |
-| Tanggal | 17 November 2026 (versi 1.5 dan 1.4: 5 November 2026; versi 1.3: 30 Oktober 2026; versi 1.2 dan 1.1: 29 Oktober 2026; versi 1.0: 30 September 2026) |
+| Versi dokumen | 1.7 |
+| Tanggal | 25 November 2026 (versi 1.6: 17 November 2026; versi 1.5 dan 1.4: 5 November 2026; versi 1.3: 30 Oktober 2026; versi 1.2 dan 1.1: 29 Oktober 2026; versi 1.0: 30 September 2026) |
+| Perubahan versi 1.7 | 25 November 2026: enkripsi tingkat aplikasi dihapus dari sistem beserta kunci utama, berkas kuncinya, dan halaman Keamanan. Data tersimpan tanpa enkripsi di PostgreSQL dan perlindungannya bergantung pada kendali akses basis data. FR-SEC-01–15 dihapus (barisnya tetap dicantumkan agar penomoran stabil) dan domain FR-SEC kini bernama "Keamanan data"; bagian 5 mencatat enkripsi tingkat aplikasi sebagai hal yang tidak dipenuhi. Jumlah butir tetap 282 dalam 14 domain, termasuk butir yang ditandai dihapus |
 | Perubahan versi 1.6 | 17 November 2026: metode AI Tournament (LLM) dihapus dari sistem; AHP + TOPSIS menjadi satu-satunya metode penilaian. Ikut dihapus: instruksi model per program beserta riwayat versinya, Konteks Bisnis, umpan balik suara atas penilaian beserta izin `scoring.feedback`, dan prompt khusus turnamen (run LLM yang tersimpan dihapus oleh `drizzle/0097_remove_llm_tournament.sql`). FR-PRG-11, 12, 14, 18, 22, FR-SCR-02, FR-ANL-28, FR-MCU-21, dan FR-AUD-04 dihapus; FR-AUT-04, FR-PRG-01, 10, 19, FR-SCR-01, 12, 20, dan FR-AUD-05 dirumuskan ulang; domain FR-AUD kini bernama "Audit dan riwayat". Daftar ini kini memuat 282 butir dalam 14 domain |
 | Perubahan versi 1.5 | 5 November 2026: fitur Simulasi penempatan (simulasi peran) dihapus dari sistem beserta tabelnya. Domain FR-SIM dihapus seluruhnya (FR-SIM-01–07), sehingga daftar ini kini memuat 291 butir dalam 14 domain |
 | Perubahan versi 1.4 | 5 November 2026: fitur Keyakinan Penempatan (MCU) dihapus dari sistem. Domain FR-MCU kini hanya memuat MCU sebagai data kandidat dan aturan yang hanya menandai; FR-MCU-02, 03, 05–10, 12–19, dan 22–26 serta FR-SIM-08 dihapus, sedangkan FR-MCU-01, 04, 20, 21 dan FR-SIM-06 dirumuskan ulang |
@@ -89,7 +90,7 @@ penilaian tetap berjalan meski peramban ditutup.
 | FR-MCU | Data pemeriksaan kesehatan (MCU) | 4 |
 | FR-SUC | Penetapan suksesor | 10 |
 | FR-DSH | Dasbor dan pelaporan | 13 |
-| FR-SEC | Keamanan dan enkripsi | 15 |
+| FR-SEC | Keamanan data | 15 |
 | FR-AUD | Audit dan riwayat | 6 |
 | | **Total** | **282** |
 
@@ -339,11 +340,11 @@ penilaian tetap berjalan meski peramban ditutup.
 | FR-ANL-05 | Menghapus sebuah penilaian tidak boleh menghapus penilaian yang diturunkan darinya; turunannya menjadi akar baru dan silsilahnya harus menyatakan hal itu. | `ON DELETE SET NULL` |
 | FR-ANL-06 | Silsilah penilaian harus ditampilkan tanpa mengikuti penyaring tanggal atau program, sebab penyaringan akan memunculkan pemutusan silsilah yang sebenarnya tidak ada. | `getRunTreeAction` |
 | FR-ANL-07 | Peringkat turunan harus menampilkan jejak leluhurnya di atas daftar, agar tidak ada yang mempelajari peringkat turunan tanpa diberi tahu bahwa itu turunan. | `run-ancestry.tsx` |
-| FR-ANL-08 | Pengguna harus dapat menandai seorang kandidat "Ditandai dikecualikan (tidak memengaruhi angka)", dengan alasan terpilih dan keterangan; pembatalan tanda juga wajib beralasan, dan keduanya tercatat beserta pelaku dan waktunya. | `setRunExclusionAction` |
+| FR-ANL-08 | Pengguna harus dapat menandai seorang kandidat "Ditandai dikecualikan (tidak memengaruhi angka)", dengan alasan terpilih dan keterangan; pembatalan tanda juga wajib beralasan, dan keduanya tercatat beserta pelaku dan waktunya. Hanya kandidat yang ada di run itu yang dapat ditandai. Run "Tambah Kandidat Pembanding" mewarisi tanda run induknya (pelaku, waktu, dan alasan asli; berlabel "diwarisi"), dan pembatalan di run turunan tidak mengubah run induk. | `setRunExclusionAction`, `startRerunAction` |
 | FR-ANL-09 | Penandaan itu hanya mencatat: skor dan peringkat run tidak berubah, dan tidak ada run turunan yang dibuat. | `scoring_run_exclusions` |
 | FR-ANL-10 | *(Dihapus.)* Penandaan tidak lagi memicu perhitungan ulang peringkat; run lama ber-mode `exclude` tetap terbaca. | — |
 | FR-ANL-11 | *(Dihapus bersama FR-ANL-10.)* | — |
-| FR-ANL-12 | Run pembanding harus memeringkat seluruh kumpulan calon induk apa adanya ditambah kandidat baru. Daftar hasilnya adalah gabungan tanpa duplikasi dari N besar menurut peringkat baru (N = jumlah finalis induk), seluruh finalis induk, dan seluruh kandidat pembanding, masing-masing dengan peringkat pool penuh dan penanda "Kandidat pembanding", "Baru masuk N besar", atau "Keluar dari N besar". | `composeChildResultList`, `childFinalistTarget` |
+| FR-ANL-12 | Run pembanding harus memeringkat seluruh kumpulan calon induk apa adanya ditambah kandidat baru, dengan skala TOPSIS run induk (pembagi kolom dan titik ideal induk dibekukan; nilai kandidat baru di luar rentang induk dihitung pada ujung rentang itu — di atas nilai terbaik setara terbaik, di bawah nilai terendah setara terendah — dan ditandai "Di luar skala induk" beserta arahnya), sehingga kecocokan dan urutan kandidat lama sama persis dengan run induk dan kandidat pembanding hanya disisipkan. Daftar hasilnya adalah gabungan tanpa duplikasi dari N besar menurut peringkat baru (N = jumlah finalis induk), seluruh finalis induk, dan seluruh kandidat pembanding, masing-masing dengan peringkat pool penuh dan penanda "Kandidat pembanding", "Baru masuk N besar", atau "Keluar dari N besar" beserta penyebabnya ("disalip kandidat pembanding" atau, pada run lama, "bergeser karena pool berubah"). | `composeChildResultList`, `childFinalistTarget`, `rankCandidatesByTopsis` (anchored), `leftTopNCauseOf` |
 | FR-ANL-13 | Dua run mana pun pada posisi dan tenant yang sama harus dapat dibandingkan berdampingan — hubungan pohon, sumber perubahan S1–S5, konfigurasi, keanggotaan pool, peringkat dan skor, per kriteria, rincian kandidat, atribusi bertahap, dan kalimat penjelasan dari templat T-01 sampai T-11 — dihitung secara deterministik dari data tersimpan dengan fungsi TOPSIS yang sama dengan scoring-service, tanpa model bahasa. Panel "Selisih Peringkat" di halaman run memakai mesin yang sama untuk induk langsung dan root. | `lib/run-compare.ts`, tab "Komparasi Versi" (`run-compare-workspace.tsx`) |
 | FR-ANL-14 | Re-run hanya berlaku untuk run AHP+TOPSIS yang sudah selesai dan menyimpan snapshot pool; pada run lain tombolnya nonaktif dengan alasan spesifik. | `validateRerunRequest`, `getRerunPreviewAction` |
 | FR-ANL-15 | Penilaian ulang hanya boleh dibuat dalam satu mode, "Tambah Kandidat Pembanding" (`incremental_add`); empat mode lama tetap terbaca, tampil di silsilah dengan label "mode lama", dan bisa dibuka. | `CREATABLE_RERUN_MODES`, `LEGACY_RERUN_MODES` |
@@ -413,25 +414,32 @@ penilaian tetap berjalan meski peramban ditutup.
 | FR-DSH-12 | Tautan menuju daftar posisi dari dasbor harus tetap bermakna sama setelah penyaringnya berubah bentuk. | `getPositionManagementPage` |
 | FR-DSH-13 | Sistem harus menyediakan halaman pemantauan penilaian yang sedang berjalan beserta seluruh penurunan mutu perhitungannya. | `lib/progress-running-actions.ts` |
 
-### FR-SEC — Keamanan dan enkripsi
+### FR-SEC — Keamanan data
+
+Sejak 25 November 2026 sistem tidak lagi mengenkripsi data di tingkat
+aplikasi. Data kandidat, isi percakapan, penempatan Talent Mapping, jejak
+perhitungan penilaian, dan kata sandi koneksi basis data sumber tersimpan tanpa
+enkripsi di PostgreSQL; perlindungannya bergantung pada kendali akses basis data
+(akun, jaringan, dan cadangan) serta izin aplikasi (FR-AUT). Kelima belas butir
+domain ini tetap dicantumkan agar penomorannya stabil.
 
 | ID | Kebutuhan | Komponen pelaksana |
 |---|---|---|
-| FR-SEC-01 | Data sensitif terpilih harus disimpan terenkripsi dengan enkripsi berlapis kunci. | `lib/crypto/envelope.ts` |
-| FR-SEC-02 | Kunci utama harus disimpan sebagai berkas di server dan tidak boleh disimpan di dalam basis data, sehingga pihak yang hanya memiliki akses basis data tidak dapat membaca kolom terlindungi. | `lib/crypto/master-key-file.ts` |
-| FR-SEC-03 | Batas perlindungan itu harus dinyatakan terus terang kepada operator, termasuk bahwa pihak dengan akses berkas server tetap dapat membacanya. | Halaman Keamanan |
-| FR-SEC-04 | Kunci utama harus dapat dibuat, dibuka, dikunci, dan dirotasi dari antarmuka. | `lib/encryption-actions.ts` |
-| FR-SEC-05 | Kunci harus ditampilkan tepat satu kali dan tidak dapat dibuat ulang oleh siapa pun, dan peringatan itu harus disampaikan sebelum kunci dibuat, bukan sesudahnya. | Dialog inisialisasi |
-| FR-SEC-06 | Rotasi hanya boleh membungkus ulang kunci data yang sama, sehingga tidak ada data yang dienkripsi ulang dan proses yang sedang berjalan tetap sah. | `rotateMasterKeyAction` |
-| FR-SEC-07 | Rotasi harus menulis basis data lebih dulu lalu berkas, dan mengembalikan keadaan basis data bila penulisan berkas gagal, sebab kunci baru di berkas yang tidak dikenali basis data akan mengunci aplikasi dari datanya sendiri. | `rotateMasterKeyAction` |
-| FR-SEC-08 | Rotasi harus dapat dibatalkan kembali ke kunci sebelumnya. | `rollbackMasterKeyRotationAction` |
-| FR-SEC-09 | Penguncian harus menetapkan penanda yang bertahan dalam proses, sebab tanpa itu permintaan berikutnya akan membaca ulang berkas kunci dan membatalkan tindakan operator. | `lock()` |
-| FR-SEC-10 | Setiap layanan harus dapat membuka kunci datanya sendiri dari berkas saat dinyalakan, sebab tanpa itu proses terjadwal tanpa operator tidak akan pernah dapat menulis kolom terenkripsi. | `ensureUnlocked()` |
-| FR-SEC-11 | Penulisan harus mengikuti tiga keadaan: teks biasa bila enkripsi belum pernah dinyalakan, teks tersandi bila kunci terbuka, dan penolakan bila enkripsi sudah dinyalakan tetapi kunci terkunci. | `encryptIfEnabled()` |
-| FR-SEC-12 | Keadaan ketiga tidak boleh pernah turun menjadi teks biasa, sebab kolom yang diyakini operator terlindungi seragam tidak boleh diam-diam memuat campuran. | `resolveWriteMode()` |
-| FR-SEC-13 | Nilai yang belum bersandi harus dapat dibaca apa adanya, sehingga sebuah kolom dapat mulai dilindungi tanpa pengisian ulang data lama. | `lib/crypto/key-store.ts` |
-| FR-SEC-14 | Kata sandi koneksi basis data sumber harus tersimpan terenkripsi, dan layanan sinkronisasi hanya boleh dapat membukanya. | `sync-service/src/services/crypto.ts` |
-| FR-SEC-15 | Pencarian dan penggabungan data yang dilakukan di sisi basis data tidak boleh dienkripsi, dan pengecualian itu harus terdokumentasi beserta alasannya. | `lib/candidate-crypto.ts` |
+| FR-SEC-01 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* Data sensitif tidak lagi disimpan terenkripsi; data tersimpan sebagai teks biasa di PostgreSQL dan dilindungi oleh kendali akses basis data. | — |
+| FR-SEC-02 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* Tidak ada lagi kunci utama maupun berkas kunci di server. | — |
+| FR-SEC-03 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* Halaman Keamanan sudah tidak ada; alamatnya dialihkan ke Sinkronisasi. | — |
+| FR-SEC-04 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* Tidak ada lagi kunci yang dapat dibuat, dibuka, dikunci, atau dirotasi. | — |
+| FR-SEC-05 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* | — |
+| FR-SEC-06 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* | — |
+| FR-SEC-07 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* | — |
+| FR-SEC-08 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* | — |
+| FR-SEC-09 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* | — |
+| FR-SEC-10 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* Proses terjadwal menulis data kandidat tanpa membuka kunci apa pun. | — |
+| FR-SEC-11 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* Setiap penulisan menyimpan teks biasa. | — |
+| FR-SEC-12 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* | — |
+| FR-SEC-13 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* | — |
+| FR-SEC-14 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* Kata sandi koneksi basis data sumber tersimpan tanpa enkripsi dan dibaca langsung oleh layanan sinkronisasi. | — |
+| FR-SEC-15 | *(Dihapus 2026-11-25 bersama enkripsi tingkat aplikasi.)* | — |
 
 ### FR-AUD — Audit dan riwayat
 
@@ -466,6 +474,7 @@ melatarbelakanginya.
 | Menggugurkan kandidat karena status pemeriksaan kesehatan | Temuan medis tidak membuat seseorang kurang kompeten |
 | Menampilkan kendali penghapusan seluruh riwayat penilaian satu program | Satu-satunya tindakan yang tidak dapat dibatalkan pada halaman tersebut |
 | Mengunggah data kandidat, divisi, departemen | Ketiganya diturunkan dari data lain, bukan ditarik dari sumber |
+| Mengenkripsi data di tingkat aplikasi | Dihapus 2026-11-25. Data tersimpan tanpa enkripsi di PostgreSQL; perlindungannya bergantung pada kendali akses basis data |
 
 ## 6. Batas cakupan dokumen ini
 

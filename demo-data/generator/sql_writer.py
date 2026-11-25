@@ -106,10 +106,15 @@ DELETE FROM sync_performance_appraisals WHERE company_id = :'company' AND employ
 DELETE FROM sync_behavior_competencies  WHERE company_id = :'company' AND employee_id IN ({i['npk']});
 DELETE FROM sync_disciplinary           WHERE company_id = :'company' AND employee_id IN ({i['npk']});
 DELETE FROM sync_education              WHERE company_id = :'company' AND employee_id IN ({i['npk']});
--- COMPANY_ID kosong di Data Karyawan tetap masuk (kolom itu tidak wajib di sumber ini), jadi ikut dibersihkan.
+-- COMPANY_ID kosong di Data Karyawan dulu tetap masuk (kini kolom itu wajib), jadi sisa lama ikut dibersihkan.
 DELETE FROM sync_employees              WHERE (company_id = :'company' OR company_id IS NULL) AND employee_id IN ({i['npk']});
 DELETE FROM sync_hav                    WHERE npk IN ({i['npk']});
 DELETE FROM sync_mcu                    WHERE npk IN ({i['npk']});
+-- Turunan (SEBELUM sync_positions, yang dirujuknya lewat positions.sync_position_id): 'Tambah Data' langsung mengisi positions (master posisi per Company) dari sync_positions.
+-- Posisi yang sempat didaftarkan di Manajemen Posisi selama demo DIPERTAHANKAN (critical_positions merujuknya).
+DELETE FROM positions p                 WHERE p.position_id IN ({i['pos']})
+   AND p.tenant_id IN (SELECT tenant_id FROM sync_company_tenant_map WHERE company_id = :'company')
+   AND NOT EXISTS (SELECT 1 FROM critical_positions cp WHERE cp.position_id = p.id);
 DELETE FROM sync_position_hierarchy     WHERE company_id = :'company' AND position_id IN ({i['pos']});
 DELETE FROM sync_positions              WHERE company_id = :'company' AND position_id IN ({i['pos']});
 DELETE FROM sync_grade_levels           WHERE company_id = :'company' AND level_id IN ({i['lvl']});
@@ -122,7 +127,8 @@ DELETE FROM sync_job_profiles           WHERE file_name IN ({i['jd']});
 SELECT 'kandidat aktif tersisa' AS cek, count(*) AS n FROM candidates
  WHERE employee_id IN ({i['npk']}) AND deleted_at IS NULL
 UNION ALL SELECT 'sync_employees tersisa', count(*) FROM sync_employees WHERE employee_id IN ({i['npk']})
-UNION ALL SELECT 'sync_positions tersisa', count(*) FROM sync_positions WHERE position_id IN ({i['pos']});
+UNION ALL SELECT 'sync_positions tersisa', count(*) FROM sync_positions WHERE position_id IN ({i['pos']})
+UNION ALL SELECT 'positions (master Company) tersisa', count(*) FROM positions WHERE position_id IN ({i['pos']});
 
 \\if :{{?commit}}
   COMMIT;

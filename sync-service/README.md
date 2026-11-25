@@ -48,7 +48,7 @@ npm run cli -- mcu              # Sync MCU (medical status) from Excel
 | `POST` | `/sync/personal` | Sync employee personal information (birth date) from API |
 | `POST` | `/sync/candidates` | Derive candidate rows from the `sync_*` tables (`src/services/candidate-populate.ts`). A CHANGED PA or BA (from MSSQL or a PA/BA workbook) is a HAV event whenever the formula can place the candidate afterwards — even under a HAV upload and even when the band is unchanged: it stamps `candidates.hav_auto_changed_at` (origin `candidate_sync`, or `pa_ba_upload` when chained after a PA/BA upload), pins `candidates.hav_auto_tier = 'formula'` (drizzle/0098) and supersedes Talent Mapping placements older than it (`superseded_by_sync`), per batch transaction. A PA (`/sync/performance`) or BA (`/sync/behavior-competencies`) workbook upload runs this job straight after its commit, so the HAV moves the same day. Re-copying an older `sync_hav` value is not an event, and `hav_quadrant` is COALESCEd so a candidate with no `sync_hav` row keeps their HAV |
 | `POST` | `/sync/job-profiles` | Sync job profiles from the shared folder / uploaded PDFs |
-| `POST` | `/sync/hav` | Sync HAV (quadrant data) from Excel file — an upload applies the moment it lands, any day, not on the next Monday cron. Rows whose quadrant CHANGES — or, for an upload made in the app only, differs from the candidate's HAV in force (a placement or a formula pinned by a PA/BA change) — update `candidates.hav_quadrant` immediately, stamp `candidates.hav_auto_changed_at` (origin `hav_upload` / `hav_folder`), pin `hav_auto_tier = 'upload'`, and supersede every Talent Mapping placement OLDER than that change (`superseded_by_upload`); an unchanged re-read of the shared HAV.xlsx touches nothing. The whole order-of-events rule — whichever of a hand placement and a sync came last wins — is in `src/services/hav-supersede.ts` / `hav-order.ts` and docs/talent-mapping.md § Urutan waktu. Refused whole while encryption is locked |
+| `POST` | `/sync/hav` | Sync HAV (quadrant data) from Excel file — an upload applies the moment it lands, any day, not on the next Monday cron. Rows whose quadrant CHANGES — or, for an upload made in the app only, differs from the candidate's HAV in force (a placement or a formula pinned by a PA/BA change) — update `candidates.hav_quadrant` immediately, stamp `candidates.hav_auto_changed_at` (origin `hav_upload` / `hav_folder`), pin `hav_auto_tier = 'upload'`, and supersede every Talent Mapping placement OLDER than that change (`superseded_by_upload`); an unchanged re-read of the shared HAV.xlsx touches nothing. The whole order-of-events rule — whichever of a hand placement and a sync came last wins — is in `src/services/hav-supersede.ts` / `hav-order.ts` and docs/talent-mapping.md § Urutan waktu. |
 | `POST` | `/sync/mcu` | Sync MCU (medical status) from Excel file |
 
 ## Features
@@ -148,6 +148,9 @@ LOCAL_HAV_FOLDER=\\\\server\\share\\hav
 LOCAL_MCU_FOLDER=\\\\server\\share\\mcu
 
 # ── LLM Processing ──
+# TEMPORARY: job-profile PDF extraction calls an ANTHROPIC-compatible Messages
+# endpoint ({base}/v1/messages, x-api-key auth), not an OpenAI-compatible one.
+# Base may be given with or without /v1. See src/services/llm-processor.ts.
 LLM_BASE_URL=https://models.example.com/v1
 LLM_API_KEY=sk-xxxxx
 LLM_MODEL=model-name
@@ -401,31 +404,23 @@ template endpoint and the ingester are all driven by the spec.
 ## Operational endpoints (`/api/sync/_*`)
 
 Paths beginning with `_` are skipped by the audit middleware, so they never appear in the sync run
-history. This service has **no authentication**, so every one of them is either secret-free,
-idempotent, or verified against material already in the database.
+history. This service has **no authentication**, so every one of them is either secret-free
+or idempotent.
 
 | endpoint | purpose |
 |---|---|
 | `GET /_db-settings` | Resolved MSSQL settings. **Never returns a password.** |
 | `POST /_reload-db-config` | Parameterless. Drops the settings cache and the live pools. |
 | `POST /_test-connection?source=MPMDS\|MPMHRGA` | Connects with a **throwaway** pool and runs `SELECT 1`. Tests what is *saved* — it accepts no credentials, because an endpoint on an unauthenticated service that took a password would let anyone repoint the sync at a database they control. |
-| `GET /_encryption-status` | Whether this process holds the data key. |
-| `POST /_unlock` | Accepts `{ dataKey }` (base64) — but only if it decrypts the stored `verifier`, so a wrong or hostile key is rejected rather than installed. |
-| `POST /_lock` | Drops the data key from memory. |
 
 ### Source-database settings
 
 `DB_MPMDS_*` / `DB_MPMHRGA_*` still work and are still the fallback. When a row exists in
 `sync_source_connections` (written by the web app, which enforces `sync.manage`), it wins.
 
-The password is stored encrypted. This service reads the master key from `PULSE_MASTER_KEY_FILE`
-(default `secrets/master.key`, mounted read-only from the host) and unwraps the data key itself, so it
-recovers on its own after a restart — that is what lets a 01:00 cron sync decrypt anything on a
-service that restarted at 23:00 with nobody awake. `POST /_unlock` still exists as a fallback for
-deployments where the file is not mounted here.
-
-If the key cannot be read or does not match the active `app_encryption_keys` row, the service logs
-loudly and falls back to `DB_MPMDS_PASSWORD` / `DB_MPMHRGA_PASSWORD`, rather than failing the sync.
+The password is stored as plain text in `sync_source_connections.password_encrypted` (the column
+keeps its historical name). A row with no stored password falls back to `DB_MPMDS_PASSWORD` /
+`DB_MPMHRGA_PASSWORD`.
 
 > `src/db/mssql.ts` used to build its pool configs as module-level `const` snapshots. Anything that
 > reintroduces that makes the settings page silently ineffective: the row updates, the API answers
